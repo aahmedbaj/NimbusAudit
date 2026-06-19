@@ -1,0 +1,42 @@
+# Python cache files
+
+**pycache**/
+*.py[cod]
+
+# Virtual environments
+
+.venv/
+venv/
+
+# Environment variables and secrets
+
+.env
+.env.*
+
+# macOS files
+
+.DS_Store
+
+# Test and tool caches
+
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Build and package files
+
+build/
+dist/
+*.egg-info/
+
+# Generated NimbusAudit reports
+
+reports/
+*.json
+*.html
+
+# IDE settings
+
+.vscode/
+.idea/
