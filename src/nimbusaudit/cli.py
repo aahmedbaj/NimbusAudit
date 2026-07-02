@@ -1,6 +1,7 @@
 from nimbusaudit.aws import create_session, get_security_groups
 from nimbusaudit.checks.security_groups import find_public_ssh_groups
 import argparse
+import json
 from nimbusaudit.models import Finding
 
 def build_parser() -> argparse.ArgumentParser:
@@ -16,7 +17,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--region",
         help="AWS region to scan, defaults to eu-central-1",
     )
+    parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        default="text",
+        help="Output format. Default: text",
+    )
     return parser
+
 
 
 def main():
@@ -27,7 +35,17 @@ def main():
 
     security_groups= get_security_groups(session)
     findings = find_public_ssh_groups(security_groups)
+    if args.format == "json":
+        output = {
+            "security_groups_scanned": len(security_groups),
+            "findings_count": len(findings),
+            "findings": [finding.to_dict() for finding in findings],
+        }
+
+    print(json.dumps(output, indent=2))
+    return
     print(f"Scanned {len(security_groups)} security groups:\n")
+
 
     if not findings:
         print("No public ssh groups found")

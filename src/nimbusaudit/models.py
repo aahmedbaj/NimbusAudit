@@ -1,4 +1,4 @@
-from dataclasses import dataclass,field
+from dataclasses import dataclass,field,asdict
 
 @dataclass
 class Finding:
@@ -10,5 +10,8 @@ class Finding:
     evidence:str
     remediation:str
     standards: list[str]=field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
