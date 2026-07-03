@@ -1,5 +1,5 @@
 from nimbusaudit.aws import create_session, get_security_groups
-from nimbusaudit.checks.security_groups import find_public_ssh_groups
+from nimbusaudit.checks.security_groups import run_security_group_checks
 import argparse
 import json
 from nimbusaudit.models import Finding
@@ -34,16 +34,37 @@ def main():
 
 
     security_groups= get_security_groups(session)
-    findings = find_public_ssh_groups(security_groups)
+    findings = run_security_group_checks(security_groups)
+
+    severity_counts = {
+        "CRITICAL": 0,
+        "HIGH": 0,
+        "MEDIUM": 0,
+        "LOW": 0,
+    }
+
+
+    for finding in findings:
+        severity_counts[finding.severity] += 1
+
+    exit_code = (
+        1
+        if severity_counts["CRITICAL"] > 0
+           or severity_counts["HIGH"] > 0
+        else 0
+    )
+
+
     if args.format == "json":
         output = {
             "security_groups_scanned": len(security_groups),
             "findings_count": len(findings),
             "findings": [finding.to_dict() for finding in findings],
+            "severity_counts": severity_counts,
         }
+        print(json.dumps(output, indent=2))
+        return exit_code
 
-    print(json.dumps(output, indent=2))
-    return
     print(f"Scanned {len(security_groups)} security groups:\n")
 
 
@@ -57,6 +78,18 @@ def main():
         print(f"  Evidence: {finding.evidence}")
         print(f"  Remediation: {finding.remediation}")
         print(f"  Standards: {', '.join(finding.standards)}")
+
+    print()
+    print("Findings summary:")
+    print(f"  CRITICAL: {severity_counts['CRITICAL']}")
+    print(f"  HIGH: {severity_counts['HIGH']}")
+    print(f"  MEDIUM: {severity_counts['MEDIUM']}")
+    print(f"  LOW: {severity_counts['LOW']}")
+
+
+
+
+    return exit_code
 
 
 
