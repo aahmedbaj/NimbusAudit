@@ -208,7 +208,7 @@ NimbusAudit also detects when a sensitive port is included inside a wider range.
 For example:
 
 ```text
-TCP ports 20–30
+TCP ports 20-30
 ```
 
 would still be flagged because the range includes SSH port 22.
@@ -305,3 +305,7 @@ Planned improvements include:
 NimbusAudit is an active portfolio project.
 
 The current version performs live AWS security-group scanning, produces structured findings, supports text and JSON reports, returns automation-friendly exit codes, and includes automated tests for both vulnerable and safe configurations.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
