@@ -1,5 +1,6 @@
-from nimbusaudit.aws import create_session, get_security_groups
+from nimbusaudit.aws import create_session, get_security_groups, AwsError
 from nimbusaudit.checks.security_groups import run_security_group_checks
+from nimbusaudit.config import config_error, load_config, save_config
 import argparse
 import json
 from nimbusaudit.models import Finding
@@ -20,20 +21,153 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--format",
         choices=["text", "json"],
-        default="text",
+        # default="text",
         help="Output format. Default: text",
+    )
+    subparser= parser.add_subparsers(dest="command",)
+    configure_parser= subparser.add_parser(
+        "configure",
+        help="Configure persistent NimbusAudit defaults.",
+        description=(
+            "Configure persistent NimbusAudit defaults. "
+            "Only supplied settings are changed."
+        ),
+    )
+    configure_parser.add_argument(
+        "--profile",
+        help="AWS profile used by default for scans."
+
+    )
+    configure_parser.add_argument(
+        "--region",
+        help="AWS region used by default for scans.",
+    )
+
+    configure_parser.add_argument(
+        "--format",
+        choices=["text", "json"],
+        help=(
+            "Output format for this scan. "
+            "Overrides the saved configuration."
+        ),
     )
     return parser
 
+def handle_configure(args: argparse.Namespace) -> int:
+    try:
+        config = load_config()
 
+        has_cli_updates = any(
+            value is not None
+            for value in (
+                args.profile,
+                args.region,
+                args.format,
+            )
+        )
+
+        if has_cli_updates:
+            if args.profile is not None:
+                config.profile = args.profile
+
+            if args.region is not None:
+                config.region = args.region
+
+            if args.format is not None:
+                config.output_format = args.format
+
+        else:
+            current_profile = config.profile or ""
+
+            profile_input = input(
+                f"AWS profile [{current_profile or 'not configured'}]: "
+            ).strip()
+
+            region_input = input(
+                f"AWS region [{config.region}]: "
+            ).strip()
+
+            format_input = input(
+                f"Default output format [{config.output_format}] "
+                "(text/json): "
+            ).strip()
+
+            if profile_input:
+                config.profile = profile_input
+
+            if region_input:
+                config.region = region_input
+
+            if format_input:
+                if format_input not in {"text", "json"}:
+                    print(
+                        "NimbusAudit configuration error: "
+                        "format must be either 'text' or 'json'."
+                    )
+                    return 2
+
+                config.output_format = format_input
+
+        saved_path = save_config(config)
+
+    except config_error as exc:
+        print(f"NimbusAudit configuration error: {exc}")
+        return 2
+
+    except (EOFError, KeyboardInterrupt):
+        print("\nConfiguration cancelled.")
+        return 2
+
+    print("NimbusAudit configuration saved.")
+    print(f"  Profile: {config.profile or 'not configured'}")
+    print(f"  Region: {config.region}")
+    print(f"  Output format: {config.output_format}")
+    print(f"  Config file: {saved_path}")
+
+    return 0
 
 def main():
     parser = build_parser()
     args = parser.parse_args()
-    session = create_session(args.profile, args.region)
+    if args.command == "configure":
+        return handle_configure(args)
+
+    try:
+        config = load_config()
+    except config_error as exc:
+        print(f"NimbusAudit configuration error: {exc}")
+
+        return 2
+
+    profile = (
+        args.profile
+        if args.profile is not None
+        else config.profile
+    )
+
+    region = (
+        args.region
+        if args.region is not None
+        else config.region
+    )
+    output_format = (
+        args.format
+        if args.format is not None
+        else config.output_format
+
+    )
 
 
-    security_groups= get_security_groups(session)
+    try:
+        session = create_session(profile, region)
+        security_groups= get_security_groups(session)
+    except AwsError as exc:
+        print(f"NimbusAudit AWS error: {exc}")
+        return 2
+
+
+
+
     findings = run_security_group_checks(security_groups)
 
     severity_counts = {
@@ -55,7 +189,7 @@ def main():
     )
 
 
-    if args.format == "json":
+    if output_format == "json":
         output = {
             "security_groups_scanned": len(security_groups),
             "findings_count": len(findings),
