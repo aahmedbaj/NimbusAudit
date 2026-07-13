@@ -111,6 +111,8 @@ The current security-group scanner requires only:
 
 ```text
 ec2:DescribeSecurityGroups
+ec2:DescribeInstances
+ec2:DescribeVolumes
 ```
 
 The policy uses:

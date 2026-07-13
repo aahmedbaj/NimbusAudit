@@ -1,8 +1,16 @@
-from nimbusaudit.aws import create_session, get_security_groups, AwsError
+from nimbusaudit.aws import (
+    AwsError,
+    create_session,
+    get_ebs_volumes,
+    get_ec2_instances,
+    get_security_groups,
+)
+from nimbusaudit.checks.ebs import run_ebs_volume_checks
 from nimbusaudit.checks.security_groups import run_security_group_checks
 from nimbusaudit.config import config_error, load_config, save_config
 import argparse
 import json
+from nimbusaudit.checks.ec2 import run_ec2_instance_checks
 from nimbusaudit.models import Finding
 
 def build_parser() -> argparse.ArgumentParser:
@@ -161,6 +169,9 @@ def main():
     try:
         session = create_session(profile, region)
         security_groups= get_security_groups(session)
+        ec2_instances = get_ec2_instances(session)
+        ebs_volumes = get_ebs_volumes(session)
+
     except AwsError as exc:
         print(f"NimbusAudit AWS error: {exc}")
         return 2
@@ -168,7 +179,19 @@ def main():
 
 
 
-    findings = run_security_group_checks(security_groups)
+    security_group_findings = run_security_group_checks(
+        security_groups
+    )
+
+    ec2_findings = run_ec2_instance_checks(
+        ec2_instances
+    )
+    ebs_findings = run_ebs_volume_checks(
+        ebs_volumes
+    )
+
+
+    findings = security_group_findings + ec2_findings + ebs_findings
 
     severity_counts = {
         "CRITICAL": 0,
@@ -195,12 +218,18 @@ def main():
             "findings_count": len(findings),
             "findings": [finding.to_dict() for finding in findings],
             "severity_counts": severity_counts,
+            "ec2_instances_scanned": len(ec2_instances),
+            "ebs_volumes_scanned": len(ebs_volumes),
         }
         print(json.dumps(output, indent=2))
         return exit_code
 
-    print(f"Scanned {len(security_groups)} security groups:\n")
 
+    print("Resources scanned:")
+    print(f"  Security groups: {len(security_groups)}")
+    print(f"  EC2 instances: {len(ec2_instances)}")
+    print(f"  EBS volumes: {len(ebs_volumes)}")
+    print()
 
     if not findings:
         print("No public ssh groups found")
