@@ -10,6 +10,7 @@ from nimbusaudit.checks.security_groups import run_security_group_checks
 from nimbusaudit.config import config_error, load_config, save_config
 import argparse
 import json
+from pathlib import Path
 from nimbusaudit.checks.ec2 import run_ec2_instance_checks
 from nimbusaudit.models import Finding
 
@@ -32,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
         # default="text",
         help="Output format. Default: text",
     )
+    parser.add_argument(
+        "--output-file",
+        help="Write the report to a file instead of printing it to stdout.",
+    )
+
     subparser= parser.add_subparsers(dest="command",)
     configure_parser= subparser.add_parser(
         "configure",
@@ -134,6 +140,100 @@ def handle_configure(args: argparse.Namespace) -> int:
 
     return 0
 
+def write_or_print_output(
+        content: str,
+        output_file: Path | None,
+) -> int:
+    if output_file is None:
+        print(content)
+        return 0
+
+    temporary_path = output_file.with_suffix(
+        output_file.suffix + ".tmp"
+    )
+
+    try:
+        if output_file.parent != Path("."):
+            output_file.parent.mkdir(
+                parents=True,
+                exist_ok=True,
+            )
+
+        temporary_path.write_text(
+            content + "\n",
+            encoding="utf-8",
+            )
+
+        temporary_path.replace(output_file)
+
+    except OSError as exc:
+        try:
+            temporary_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        print(
+            f"NimbusAudit output error: "
+            f"could not write output to '{output_file}': {exc}"
+        )
+        return 2
+
+    print(f"Output written to {output_file}")
+    return 0
+
+class OutputError(Exception):
+    """Raised when NimbusAudit cannot prepare or write output."""
+
+OUTPUT_FORMAT_SUFFIXES = {
+    "text": ".txt",
+    "json": ".json",
+}
+
+def resolve_output_format_and_file(
+        configured_format: str,
+        cli_format: str | None,
+        output_file: str | None,
+) -> tuple[str, Path | None]:
+    if output_file is None:
+        output_format = cli_format or configured_format
+        return output_format, None
+
+    path = Path(output_file)
+    suffix = path.suffix.lower()
+
+    if suffix == "":
+        output_format = cli_format or configured_format
+        expected_suffix = OUTPUT_FORMAT_SUFFIXES[output_format]
+        return output_format, path.with_suffix(expected_suffix)
+
+    suffix_to_format = {
+        suffix: output_format
+        for output_format, suffix in OUTPUT_FORMAT_SUFFIXES.items()
+    }
+
+    if suffix not in suffix_to_format:
+        supported_suffixes = ", ".join(
+            sorted(suffix_to_format)
+        )
+
+        raise OutputError(
+            f"unsupported output file extension '{suffix}'. "
+            f"Use one of: {supported_suffixes}, or omit the extension."
+        )
+
+    suffix_format = suffix_to_format[suffix]
+
+    if cli_format is not None and cli_format != suffix_format:
+        raise OutputError(
+            f"output file extension '{suffix}' conflicts with "
+            f"--format '{cli_format}'. "
+            f"Use a '.{cli_format if cli_format != 'text' else 'txt'}' "
+            f"file or omit the extension."
+        )
+
+    return suffix_format, path
+
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
@@ -158,12 +258,16 @@ def main():
         if args.region is not None
         else config.region
     )
-    output_format = (
-        args.format
-        if args.format is not None
-        else config.output_format
+    try:
+        output_format, output_file = resolve_output_format_and_file(
+            configured_format=config.output_format,
+            cli_format=args.format,
+            output_file=args.output_file,
+        )
 
-    )
+    except OutputError as exc:
+        print(f"NimbusAudit output error: {exc}")
+        return 2
 
 
     try:
@@ -221,36 +325,52 @@ def main():
             "ec2_instances_scanned": len(ec2_instances),
             "ebs_volumes_scanned": len(ebs_volumes),
         }
-        print(json.dumps(output, indent=2))
+        content = json.dumps(output, indent=2)
+
+        output_exit_code = write_or_print_output(
+            content,
+            output_file,
+        )
+        if output_exit_code != 0:
+            return output_exit_code
+
         return exit_code
 
+    lines = []
 
-    print("Resources scanned:")
-    print(f"  Security groups: {len(security_groups)}")
-    print(f"  EC2 instances: {len(ec2_instances)}")
-    print(f"  EBS volumes: {len(ebs_volumes)}")
-    print()
+    lines.append("Resources scanned:")
+    lines.append(f"  Security groups: {len(security_groups)}")
+    lines.append(f"  EC2 instances: {len(ec2_instances)}")
+    lines.append(f"  EBS volumes: {len(ebs_volumes)}")
+    lines.append("")
 
     if not findings:
-        print("No public ssh groups found")
+        lines.append("No findings detected.")
 
     for finding in findings:
-        print(f"[{finding.severity}] {finding.title}")
-        print(f"  Rule: {finding.rule_id}")
-        print(f"  Resource: {finding.resource_id}")
-        print(f"  Evidence: {finding.evidence}")
-        print(f"  Remediation: {finding.remediation}")
-        print(f"  Standards: {', '.join(finding.standards)}")
+        lines.append(f"[{finding.severity}] {finding.title}")
+        lines.append(f"  Rule: {finding.rule_id}")
+        lines.append(f"  Resource: {finding.resource_id}")
+        lines.append(f"  Evidence: {finding.evidence}")
+        lines.append(f"  Remediation: {finding.remediation}")
+        lines.append(f"  Standards: {', '.join(finding.standards)}")
+        lines.append("")
 
-    print()
-    print("Findings summary:")
-    print(f"  CRITICAL: {severity_counts['CRITICAL']}")
-    print(f"  HIGH: {severity_counts['HIGH']}")
-    print(f"  MEDIUM: {severity_counts['MEDIUM']}")
-    print(f"  LOW: {severity_counts['LOW']}")
+    lines.append("Findings summary:")
+    lines.append(f"  CRITICAL: {severity_counts['CRITICAL']}")
+    lines.append(f"  HIGH: {severity_counts['HIGH']}")
+    lines.append(f"  MEDIUM: {severity_counts['MEDIUM']}")
+    lines.append(f"  LOW: {severity_counts['LOW']}")
 
+    content = "\n".join(lines)
 
+    output_exit_code = write_or_print_output(
+        content,
+        output_file,
+    )
 
+    if output_exit_code != 0:
+        return output_exit_code
 
     return exit_code
 

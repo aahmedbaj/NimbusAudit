@@ -177,3 +177,52 @@ nimbusaudit --region us-east-1 --format json
 ```
 
 Temporary overrides do not modify the saved NimbusAudit configuration.
+
+
+### Saving reports to a file
+
+NimbusAudit can print reports to stdout or write them to a file.
+
+Print JSON to stdout:
+
+```bash
+nimbusaudit --format json
+```
+
+Write JSON to a file:
+
+```bash
+nimbusaudit --format json --output-file report.json
+```
+
+If the output file has no extension, NimbusAudit adds the extension that matches the selected output format:
+
+```bash
+nimbusaudit --format json --output-file report
+```
+
+This writes:
+
+```text
+report.json
+```
+
+For text output:
+
+```bash
+nimbusaudit --format text --output-file report
+```
+
+This writes:
+
+```text
+report.txt
+```
+
+If a file extension is provided, it must match the selected format. For example, this is rejected:
+
+```bash
+nimbusaudit --format json --output-file report.txt
+```
+
+NimbusAudit returns exit code `2` when the output file path is invalid or cannot be written.
