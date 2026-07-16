@@ -118,9 +118,7 @@ def resolve_check_groups(
     invalid_checks = requested - ALL_CHECK_GROUPS
 
     if invalid_checks:
-        valid_choices = ", ".join(
-            ["all", *sorted(ALL_CHECK_GROUPS)]
-        )
+        valid_choices = ", ".join(["all", *CHECK_GROUPS])
 
         invalid_display = ", ".join(
             sorted(invalid_checks)
@@ -260,11 +258,13 @@ OUTPUT_FORMAT_SUFFIXES = {
 class CheckSelectionError(Exception):
     """Raised when the requested check selection is invalid."""
 
-ALL_CHECK_GROUPS = {
+CHECK_GROUPS = (
     "security-groups",
     "ec2",
     "ebs",
-}
+)
+
+ALL_CHECK_GROUPS = set(CHECK_GROUPS)
 
 
 def resolve_output_format_and_file(
@@ -336,6 +336,48 @@ def should_fail_on_findings(
             return True
 
     return False
+
+
+def format_selected_check_groups(
+        selected_check_groups: set[str],
+) -> list[str]:
+    return [
+        check_group
+        for check_group in CHECK_GROUPS
+        if check_group in selected_check_groups
+    ]
+
+#text report format methods and consts
+REPORT_WIDTH = 72
+
+ANSI_BOLD = "\033[1m"
+ANSI_RESET = "\033[0m"
+
+
+def center_text(
+        text: str,
+        width: int = REPORT_WIDTH,
+) -> str:
+    return text.center(width)
+
+
+def format_report_title(
+        title: str,
+        use_ansi: bool = False,
+) -> str:
+    centered_title = center_text(title)
+
+    if use_ansi:
+        return f"{ANSI_BOLD}{centered_title}{ANSI_RESET}"
+
+    return centered_title
+
+
+def format_section_header(
+        title: str,
+        width: int = REPORT_WIDTH,
+) -> str:
+    return f"{title}\n{'-' * min(len(title), width)}"
 
 
 def main():
@@ -431,6 +473,10 @@ def main():
             run_ebs_volume_checks(ebs_volumes)
         )
 
+    checks_run = format_selected_check_groups(
+        selected_check_groups
+    )
+
 
     severity_counts = {
         "CRITICAL": 0,
@@ -454,12 +500,18 @@ def main():
 
     if output_format == "json":
         output = {
+            "profile": profile,
+            "region": region,
+            "checks_run": checks_run,
             "security_groups_scanned": len(security_groups),
-            "findings_count": len(findings),
-            "findings": [finding.to_dict() for finding in findings],
-            "severity_counts": severity_counts,
             "ec2_instances_scanned": len(ec2_instances),
             "ebs_volumes_scanned": len(ebs_volumes),
+            "findings_count": len(findings),
+            "severity_counts": severity_counts,
+            "findings": [
+                finding.to_dict()
+                for finding in findings
+            ],
         }
         content = json.dumps(output, indent=2)
 
@@ -472,31 +524,53 @@ def main():
 
         return exit_code
 
-    lines = []
+    use_ansi = output_file is None
 
-    lines.append("Resources scanned:")
-    lines.append(f"  Security groups: {len(security_groups)}")
-    lines.append(f"  EC2 instances: {len(ec2_instances)}")
-    lines.append(f"  EBS volumes: {len(ebs_volumes)}")
+    lines = [
+        format_report_title(
+            "NimbusAudit report",
+            use_ansi=use_ansi,
+        ),
+        "=" * REPORT_WIDTH,
+        f"Profile: {profile or 'default'}",
+        f"Region: {region}",
+        "",
+        ]
+
+    lines.append(format_section_header("Checks run"))
+    for check_group in checks_run:
+        lines.append(f"  - {check_group}")
+    lines.append("")
+    lines.append(
+        format_section_header("Resources scanned")
+    )
+    lines.append(f"  Security groups : {len(security_groups)}")
+    lines.append(f"  EC2 instances   : {len(ec2_instances)}")
+    lines.append(f"  EBS volumes     : {len(ebs_volumes)}")
     lines.append("")
 
-    if not findings:
-        lines.append("No findings detected.")
+    if findings:
+        lines.append(format_section_header("Findings"))
+        for finding in findings:
+            lines.append("")
+            lines.append(f"[{finding.severity}] {finding.title}")
+            lines.append(f"  Rule: {finding.rule_id}")
+            lines.append(f"  Resource: {finding.resource_id}")
+            lines.append(f"  Evidence: {finding.evidence}")
+            lines.append(f"  Remediation: {finding.remediation}")
+    else:
+        lines.append("No findings.")
 
-    for finding in findings:
-        lines.append(f"[{finding.severity}] {finding.title}")
-        lines.append(f"  Rule: {finding.rule_id}")
-        lines.append(f"  Resource: {finding.resource_id}")
-        lines.append(f"  Evidence: {finding.evidence}")
-        lines.append(f"  Remediation: {finding.remediation}")
-        lines.append(f"  Standards: {', '.join(finding.standards)}")
-        lines.append("")
-
-    lines.append("Findings summary:")
-    lines.append(f"  CRITICAL: {severity_counts['CRITICAL']}")
-    lines.append(f"  HIGH: {severity_counts['HIGH']}")
-    lines.append(f"  MEDIUM: {severity_counts['MEDIUM']}")
-    lines.append(f"  LOW: {severity_counts['LOW']}")
+    lines.append("")
+    lines.append(
+        format_section_header("Findings summary")
+    )
+    lines.append(f"  Critical : {severity_counts['CRITICAL']}")
+    lines.append(f"  High     : {severity_counts['HIGH']}")
+    lines.append(f"  Medium   : {severity_counts['MEDIUM']}")
+    lines.append(f"  Low      : {severity_counts['LOW']}")
+    lines.append(f"  Total    : {len(findings)}")
+    lines.append("")
 
     content = "\n".join(lines)
 

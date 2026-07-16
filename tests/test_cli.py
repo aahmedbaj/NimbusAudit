@@ -5,7 +5,7 @@ import pytest
 
 from nimbusaudit.aws import AwsError
 from nimbusaudit.cli import main, resolve_output_format_and_file, OutputError, write_or_print_output, \
-    resolve_check_groups, CheckSelectionError, should_fail_on_findings
+    resolve_check_groups, CheckSelectionError, should_fail_on_findings, format_selected_check_groups
 from nimbusaudit.config import NimbusAuditConfig
 
 
@@ -366,3 +366,27 @@ def test_should_ignore_unknown_severity_for_failure_threshold() -> None:
         findings,
         fail_on="low",
     ) is False
+
+
+def test_format_selected_check_groups_preserves_display_order() -> None:
+    selected = {
+        "ebs",
+        "security-groups",
+        "ec2",
+    }
+
+    assert format_selected_check_groups(selected) == [
+        "security-groups",
+        "ec2",
+        "ebs",
+    ]
+
+
+def test_format_selected_check_groups_returns_only_selected_groups() -> None:
+    selected = {
+        "ebs",
+    }
+
+    assert format_selected_check_groups(selected) == [
+        "ebs",
+    ]
