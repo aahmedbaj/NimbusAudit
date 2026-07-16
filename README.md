@@ -273,3 +273,52 @@ ebs
 ```
 
 The `all` option cannot be combined with other groups.
+
+### Configuring failure threshold
+
+NimbusAudit returns exit code `1` when findings meet or exceed the configured failure threshold.
+
+By default, NimbusAudit fails on `HIGH` and `CRITICAL` findings:
+
+```bash
+nimbusaudit
+```
+
+This is equivalent to:
+
+```bash
+nimbusaudit --fail-on high
+```
+
+You can make the scan less strict and fail only on critical findings:
+
+```bash
+nimbusaudit --fail-on critical
+```
+
+Or make it stricter:
+
+```bash
+nimbusaudit --fail-on medium
+```
+
+```bash
+nimbusaudit --fail-on low
+```
+
+Severity order:
+
+```text
+LOW < MEDIUM < HIGH < CRITICAL
+```
+
+Failure behavior:
+
+| Option | Returns exit code `1` when findings include |
+|---|---|
+| `--fail-on critical` | `CRITICAL` |
+| `--fail-on high` | `HIGH`, `CRITICAL` |
+| `--fail-on medium` | `MEDIUM`, `HIGH`, `CRITICAL` |
+| `--fail-on low` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+
+NimbusAudit returns exit code `2` for scan, configuration, AWS, or output errors.

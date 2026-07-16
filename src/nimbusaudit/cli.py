@@ -51,6 +51,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Default: all."
         ),
     )
+    parser.add_argument(
+        "--fail-on",
+        choices=["critical", "high", "medium", "low"],
+        default="high",
+        help=(
+            "Return exit code 1 when findings are at or above this severity. "
+            "Default: high."
+        ),
+    )
+
     subparser= parser.add_subparsers(dest="command",)
     configure_parser= subparser.add_parser(
         "configure",
@@ -301,6 +311,32 @@ def resolve_output_format_and_file(
 
     return suffix_format, path
 
+SEVERITY_RANKS = {
+    "LOW": 1,
+    "MEDIUM": 2,
+    "HIGH": 3,
+    "CRITICAL": 4,
+}
+
+def should_fail_on_findings(
+        findings: list,
+        fail_on: str,
+) -> bool:
+    threshold = SEVERITY_RANKS[
+        fail_on.upper()
+    ]
+
+    for finding in findings:
+        finding_rank = SEVERITY_RANKS.get(
+            finding.severity,
+            0,
+        )
+
+        if finding_rank >= threshold:
+            return True
+
+    return False
+
 
 def main():
     parser = build_parser()
@@ -409,11 +445,12 @@ def main():
 
     exit_code = (
         1
-        if severity_counts["CRITICAL"] > 0
-           or severity_counts["HIGH"] > 0
+        if should_fail_on_findings(
+            findings,
+            args.fail_on,
+        )
         else 0
     )
-
 
     if output_format == "json":
         output = {

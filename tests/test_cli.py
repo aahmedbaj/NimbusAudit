@@ -5,7 +5,7 @@ import pytest
 
 from nimbusaudit.aws import AwsError
 from nimbusaudit.cli import main, resolve_output_format_and_file, OutputError, write_or_print_output, \
-    resolve_check_groups, CheckSelectionError
+    resolve_check_groups, CheckSelectionError, should_fail_on_findings
 from nimbusaudit.config import NimbusAuditConfig
 
 
@@ -275,3 +275,94 @@ def test_resolve_check_groups_rejects_all_combined_with_other_groups() -> None:
             match="'all' cannot be combined",
     ):
         resolve_check_groups("all,ec2")
+
+
+from dataclasses import dataclass
+
+
+@dataclass
+class FakeFinding:
+    severity: str
+
+def test_should_fail_on_critical_only_when_critical_exists() -> None:
+    findings = [
+        FakeFinding(severity="HIGH"),
+        FakeFinding(severity="MEDIUM"),
+    ]
+
+    assert should_fail_on_findings(
+        findings,
+        fail_on="critical",
+    ) is False
+
+    findings.append(
+        FakeFinding(severity="CRITICAL")
+    )
+
+    assert should_fail_on_findings(
+        findings,
+        fail_on="critical",
+    ) is True
+
+
+def test_should_fail_on_high_for_high_and_critical() -> None:
+    assert should_fail_on_findings(
+        [FakeFinding(severity="HIGH")],
+        fail_on="high",
+    ) is True
+
+    assert should_fail_on_findings(
+        [FakeFinding(severity="CRITICAL")],
+        fail_on="high",
+    ) is True
+
+    assert should_fail_on_findings(
+        [FakeFinding(severity="MEDIUM")],
+        fail_on="high",
+    ) is False
+
+
+def test_should_fail_on_medium_for_medium_and_above() -> None:
+    assert should_fail_on_findings(
+        [FakeFinding(severity="MEDIUM")],
+        fail_on="medium",
+    ) is True
+
+    assert should_fail_on_findings(
+        [FakeFinding(severity="HIGH")],
+        fail_on="medium",
+    ) is True
+
+    assert should_fail_on_findings(
+        [FakeFinding(severity="LOW")],
+        fail_on="medium",
+    ) is False
+
+
+def test_should_fail_on_low_for_any_known_severity() -> None:
+    findings = [
+        FakeFinding(severity="LOW"),
+    ]
+
+    assert should_fail_on_findings(
+        findings,
+        fail_on="low",
+    ) is True
+
+
+def test_should_not_fail_when_no_findings_exist() -> None:
+    assert should_fail_on_findings(
+        [],
+        fail_on="low",
+    ) is False
+
+
+def test_should_ignore_unknown_severity_for_failure_threshold() -> None:
+    findings = [
+        FakeFinding(severity="INFO"),
+    ]
+
+    assert should_fail_on_findings(
+        findings,
+        fail_on="low",
+    ) is False
