@@ -226,3 +226,48 @@ nimbusaudit --format json --output-file report.txt
 ```
 
 NimbusAudit returns exit code `2` when the output file path is invalid or cannot be written.
+
+
+### Selecting check groups
+
+By default, NimbusAudit runs all available check groups:
+
+```bash
+nimbusaudit
+```
+
+You can run a specific check group with `--checks`:
+
+```bash
+nimbusaudit --checks security-groups
+```
+
+```bash
+nimbusaudit --checks ec2
+```
+
+```bash
+nimbusaudit --checks ebs
+```
+
+You can also run multiple groups by separating them with commas:
+
+```bash
+nimbusaudit --checks security-groups,ec2
+```
+
+To explicitly run every available group:
+
+```bash
+nimbusaudit --checks all
+```
+
+Available check groups:
+
+```text
+security-groups
+ec2
+ebs
+```
+
+The `all` option cannot be combined with other groups.

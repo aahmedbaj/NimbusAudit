@@ -17,7 +17,10 @@ from nimbusaudit.models import Finding
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="nimbusaudit",
-        description="Read-only cloud security auditing CLI.",
+        description=(
+            "Read-only cloud security auditing CLI. "
+            "By default, NimbusAudit runs all available checks."
+        ),
     )
     parser.add_argument(
         "--profile",
@@ -37,7 +40,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--output-file",
         help="Write the report to a file instead of printing it to stdout.",
     )
-
+    parser.add_argument(
+        "--checks",
+        metavar="GROUPS",
+        help=(
+            "Comma-separated check groups to run. "
+            "Valid groups: all, security-groups, ec2, ebs. "
+            "Examples: --checks security-groups, "
+            "--checks ec2,ebs, --checks all. "
+            "Default: all."
+        ),
+    )
     subparser= parser.add_subparsers(dest="command",)
     configure_parser= subparser.add_parser(
         "configure",
@@ -66,6 +79,51 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
+
+def resolve_check_groups(
+        checks: str | None,
+) -> set[str]:
+    if checks is None:
+        return set(ALL_CHECK_GROUPS)
+
+    requested = {
+        check.strip()
+        for check in checks.split(",")
+        if check.strip()
+    }
+
+    if not requested:
+        raise CheckSelectionError(
+            "no check groups were provided."
+        )
+
+    if "all" in requested:
+        if len(requested) > 1:
+            raise CheckSelectionError(
+                "'all' cannot be combined with other check groups."
+            )
+
+        return set(ALL_CHECK_GROUPS)
+
+    invalid_checks = requested - ALL_CHECK_GROUPS
+
+    if invalid_checks:
+        valid_choices = ", ".join(
+            ["all", *sorted(ALL_CHECK_GROUPS)]
+        )
+
+        invalid_display = ", ".join(
+            sorted(invalid_checks)
+        )
+
+        raise CheckSelectionError(
+            f"unsupported check group(s): {invalid_display}. "
+            f"Valid choices: {valid_choices}."
+        )
+
+    return requested
+
+
 
 def handle_configure(args: argparse.Namespace) -> int:
     try:
@@ -189,6 +247,16 @@ OUTPUT_FORMAT_SUFFIXES = {
     "json": ".json",
 }
 
+class CheckSelectionError(Exception):
+    """Raised when the requested check selection is invalid."""
+
+ALL_CHECK_GROUPS = {
+    "security-groups",
+    "ec2",
+    "ebs",
+}
+
+
 def resolve_output_format_and_file(
         configured_format: str,
         cli_format: str | None,
@@ -269,12 +337,39 @@ def main():
         print(f"NimbusAudit output error: {exc}")
         return 2
 
+    try:
+        selected_check_groups = resolve_check_groups(
+            args.checks
+        )
+
+    except CheckSelectionError as exc:
+        print(f"NimbusAudit check selection error: {exc}")
+        return 2
+
 
     try:
         session = create_session(profile, region)
-        security_groups= get_security_groups(session)
-        ec2_instances = get_ec2_instances(session)
-        ebs_volumes = get_ebs_volumes(session)
+
+        security_groups = []
+        ec2_instances = []
+        ebs_volumes = []
+
+        try:
+            session = create_session(profile, region)
+
+            if "security-groups" in selected_check_groups:
+                security_groups = get_security_groups(session)
+
+            if "ec2" in selected_check_groups:
+                ec2_instances = get_ec2_instances(session)
+
+            if "ebs" in selected_check_groups:
+                ebs_volumes = get_ebs_volumes(session)
+
+        except AwsError as exc:
+            print(f"NimbusAudit AWS error: {exc}")
+            return 2
+
 
     except AwsError as exc:
         print(f"NimbusAudit AWS error: {exc}")
@@ -283,19 +378,23 @@ def main():
 
 
 
-    security_group_findings = run_security_group_checks(
-        security_groups
-    )
+    findings = []
 
-    ec2_findings = run_ec2_instance_checks(
-        ec2_instances
-    )
-    ebs_findings = run_ebs_volume_checks(
-        ebs_volumes
-    )
+    if "security-groups" in selected_check_groups:
+        findings.extend(
+            run_security_group_checks(security_groups)
+        )
 
+    if "ec2" in selected_check_groups:
+        findings.extend(
+            run_ec2_instance_checks(ec2_instances)
+        )
 
-    findings = security_group_findings + ec2_findings + ebs_findings
+    if "ebs" in selected_check_groups:
+        findings.extend(
+            run_ebs_volume_checks(ebs_volumes)
+        )
+
 
     severity_counts = {
         "CRITICAL": 0,

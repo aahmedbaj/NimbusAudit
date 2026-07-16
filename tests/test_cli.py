@@ -4,7 +4,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from nimbusaudit.aws import AwsError
-from nimbusaudit.cli import main, resolve_output_format_and_file, OutputError, write_or_print_output
+from nimbusaudit.cli import main, resolve_output_format_and_file, OutputError, write_or_print_output, \
+    resolve_check_groups, CheckSelectionError
 from nimbusaudit.config import NimbusAuditConfig
 
 
@@ -204,3 +205,73 @@ def test_write_or_print_output_creates_parent_directories(
     assert output_file.read_text(
         encoding="utf-8",
     ) == "nested report\n"
+
+
+def test_resolve_check_groups_defaults_to_all() -> None:
+    selected = resolve_check_groups(None)
+
+    assert selected == {
+        "security-groups",
+        "ec2",
+        "ebs",
+    }
+
+
+def test_resolve_check_groups_accepts_all() -> None:
+    selected = resolve_check_groups("all")
+
+    assert selected == {
+        "security-groups",
+        "ec2",
+        "ebs",
+    }
+
+
+def test_resolve_check_groups_accepts_single_group() -> None:
+    selected = resolve_check_groups("ec2")
+
+    assert selected == {
+        "ec2",
+    }
+
+
+def test_resolve_check_groups_accepts_multiple_groups() -> None:
+    selected = resolve_check_groups("security-groups,ec2")
+
+    assert selected == {
+        "security-groups",
+        "ec2",
+    }
+
+
+def test_resolve_check_groups_ignores_extra_spaces() -> None:
+    selected = resolve_check_groups(" security-groups , ebs ")
+
+    assert selected == {
+        "security-groups",
+        "ebs",
+    }
+
+
+def test_resolve_check_groups_rejects_empty_value() -> None:
+    with pytest.raises(
+            CheckSelectionError,
+            match="no check groups were provided",
+    ):
+        resolve_check_groups("")
+
+
+def test_resolve_check_groups_rejects_unsupported_group() -> None:
+    with pytest.raises(
+            CheckSelectionError,
+            match="unsupported check group",
+    ):
+        resolve_check_groups("s3")
+
+
+def test_resolve_check_groups_rejects_all_combined_with_other_groups() -> None:
+    with pytest.raises(
+            CheckSelectionError,
+            match="'all' cannot be combined",
+    ):
+        resolve_check_groups("all,ec2")
