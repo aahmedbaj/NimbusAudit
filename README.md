@@ -1,5 +1,7 @@
 # NimbusAudit
 
+[![Tests](https://github.com/aahmedbaj/nimbusaudit/actions/workflows/tests.yml/badge.svg)](https://github.com/aahmedbaj/nimbusaudit/actions/workflows/tests.yml)
+
 > See what your cloud forgot to secure.
 
 NimbusAudit is a command-line security auditing tool that examines cloud resources and identifies risky or unintended configurations.
