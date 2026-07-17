@@ -322,3 +322,63 @@ Failure behavior:
 | `--fail-on low` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
 
 NimbusAudit returns exit code `2` for scan, configuration, AWS, or output errors.
+
+### Interactive menu
+
+NimbusAudit also includes an optional interactive menu:
+
+```bash
+nimbusaudit menu
+```
+
+The menu lets you select check groups without remembering the `--checks` syntax.
+
+Example menu:
+
+```text
+NimbusAudit menu
+========================================================================
+
+Select check groups to run:
+
+  0. exit
+  1. security-groups
+  2. ec2
+  3. ebs
+  *. all
+
+Enter one option or multiple check numbers separated by commas.
+Examples: 1,3 or *
+```
+
+Examples:
+
+```text
+1
+```
+
+Runs only security group checks.
+
+```text
+1,3
+```
+
+Runs security group and EBS checks.
+
+```text
+*
+```
+
+Runs all checks.
+
+```text
+0
+```
+
+Exits without starting a scan.
+
+The menu is intended for interactive use. For automation and CI/CD, prefer direct CLI flags such as:
+
+```bash
+nimbusaudit --checks security-groups,ebs
+```

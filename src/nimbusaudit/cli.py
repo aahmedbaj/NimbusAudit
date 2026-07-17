@@ -88,6 +88,11 @@ def build_parser() -> argparse.ArgumentParser:
             "Overrides the saved configuration."
         ),
     )
+    subparser.add_parser(
+        "menu",
+        help="Run NimbusAudit using an interactive menu.",
+    )
+
     return parser
 
 def resolve_check_groups(
@@ -265,6 +270,106 @@ CHECK_GROUPS = (
 )
 
 ALL_CHECK_GROUPS = set(CHECK_GROUPS)
+MENU_EXIT_OPTION = "0"
+MENU_ALL_OPTION = "*"
+
+MENU_CHECK_OPTIONS = tuple(
+    (str(index), check_group)
+    for index, check_group in enumerate(
+        CHECK_GROUPS,
+        start=1,
+    )
+)
+
+def parse_menu_check_selection(
+        selection: str,
+) -> str | None:
+    requested_options = {
+        item.strip()
+        for item in selection.split(",")
+        if item.strip()
+    }
+
+    if not requested_options:
+        raise CheckSelectionError(
+            "no menu options were selected."
+        )
+
+    valid_options = {
+        option_number
+        for option_number, _check_group in MENU_CHECK_OPTIONS
+    }
+
+    if MENU_EXIT_OPTION in requested_options:
+        if len(requested_options) > 1:
+            raise CheckSelectionError(
+                "'0' cannot be combined with other menu options."
+            )
+
+        return None
+
+    if MENU_ALL_OPTION in requested_options:
+        if len(requested_options) > 1:
+            raise CheckSelectionError(
+                "'*' cannot be combined with other menu options."
+            )
+
+        return "all"
+
+    invalid_options = requested_options - valid_options
+
+    if invalid_options:
+        invalid_display = ", ".join(
+            sorted(invalid_options)
+        )
+        valid_display = ", ".join(
+            [
+                MENU_EXIT_OPTION,
+                *sorted(valid_options),
+                MENU_ALL_OPTION,
+            ]
+        )
+
+        raise CheckSelectionError(
+            f"unsupported menu option(s): {invalid_display}. "
+            f"Valid options: {valid_display}."
+        )
+
+    selected_check_groups = [
+        check_group
+        for option_number, check_group in MENU_CHECK_OPTIONS
+        if option_number in requested_options
+    ]
+
+    return ",".join(selected_check_groups)
+
+def prompt_for_check_groups_menu() -> str | None:
+    print("NimbusAudit menu")
+    print("=" * REPORT_WIDTH)
+    print("")
+    print("Select check groups to run:")
+    print("")
+
+
+    for option_number, check_group in MENU_CHECK_OPTIONS:
+        print(f"  {option_number}. {check_group}")
+
+    print(f"  {MENU_ALL_OPTION}. all")
+    print(f"  {MENU_EXIT_OPTION}. exit")
+    print("")
+    print("Enter one option or multiple options separated by commas.")
+    print("Examples: 1,3 or *")
+    print("")
+
+    try:
+        selection = input("Checks to run: ")
+    except (EOFError, KeyboardInterrupt):
+        print("")
+        print("Menu cancelled.")
+        return None
+
+    return parse_menu_check_selection(selection)
+
 
 
 def resolve_output_format_and_file(
@@ -380,6 +485,7 @@ def format_section_header(
     return f"{title}\n{'-' * min(len(title), width)}"
 
 
+
 def main():
     parser = build_parser()
     args = parser.parse_args()
@@ -415,6 +521,18 @@ def main():
         print(f"NimbusAudit output error: {exc}")
         return 2
 
+    if args.command == "menu":
+        try:
+            menu_checks = prompt_for_check_groups_menu()
+        except CheckSelectionError as exc:
+            print(f"NimbusAudit menu error: {exc}")
+            return 2
+
+        if menu_checks is None:
+            return 2
+
+        args.checks = menu_checks
+
     try:
         selected_check_groups = resolve_check_groups(
             args.checks
@@ -423,6 +541,7 @@ def main():
     except CheckSelectionError as exc:
         print(f"NimbusAudit check selection error: {exc}")
         return 2
+
 
 
     try:
