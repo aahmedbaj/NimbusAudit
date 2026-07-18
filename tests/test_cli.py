@@ -214,6 +214,7 @@ def test_resolve_check_groups_defaults_to_all() -> None:
         "security-groups",
         "ec2",
         "ebs",
+        "s3"
     }
 
 
@@ -224,6 +225,7 @@ def test_resolve_check_groups_accepts_all() -> None:
         "security-groups",
         "ec2",
         "ebs",
+        "s3"
     }
 
 
@@ -266,9 +268,7 @@ def test_resolve_check_groups_rejects_unsupported_group() -> None:
             CheckSelectionError,
             match="unsupported check group",
     ):
-        resolve_check_groups("s3")
-
-
+        resolve_check_groups("rds")
 def test_resolve_check_groups_rejects_all_combined_with_other_groups() -> None:
     with pytest.raises(
             CheckSelectionError,

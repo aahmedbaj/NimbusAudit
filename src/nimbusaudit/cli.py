@@ -4,7 +4,9 @@ from nimbusaudit.aws import (
     get_ebs_volumes,
     get_ec2_instances,
     get_security_groups,
+    get_s3_buckets,
 )
+from nimbusaudit.checks.s3 import run_s3_bucket_checks
 from nimbusaudit.checks.ebs import run_ebs_volume_checks
 from nimbusaudit.checks.security_groups import run_security_group_checks
 from nimbusaudit.config import config_error, load_config, save_config
@@ -267,6 +269,7 @@ CHECK_GROUPS = (
     "security-groups",
     "ec2",
     "ebs",
+    "s3"
 )
 
 ALL_CHECK_GROUPS = set(CHECK_GROUPS)
@@ -521,6 +524,7 @@ def main():
         print(f"NimbusAudit output error: {exc}")
         return 2
 
+    menu_checks= None
     if args.command == "menu":
         try:
             menu_checks = prompt_for_check_groups_menu()
@@ -529,9 +533,10 @@ def main():
             return 2
 
         if menu_checks is None:
-            return 2
+            print("No scan started.")
+            return 0
 
-        args.checks = menu_checks
+    args.checks = menu_checks
 
     try:
         selected_check_groups = resolve_check_groups(
@@ -550,6 +555,8 @@ def main():
         security_groups = []
         ec2_instances = []
         ebs_volumes = []
+        s3_buckets = []
+
 
         try:
             session = create_session(profile, region)
@@ -562,6 +569,9 @@ def main():
 
             if "ebs" in selected_check_groups:
                 ebs_volumes = get_ebs_volumes(session)
+
+            if "s3" in selected_check_groups:
+                s3_buckets = get_s3_buckets(session)
 
         except AwsError as exc:
             print(f"NimbusAudit AWS error: {exc}")
@@ -590,6 +600,10 @@ def main():
     if "ebs" in selected_check_groups:
         findings.extend(
             run_ebs_volume_checks(ebs_volumes)
+        )
+    if "s3" in selected_check_groups:
+        findings.extend(
+            run_s3_bucket_checks(s3_buckets)
         )
 
     checks_run = format_selected_check_groups(
@@ -625,6 +639,7 @@ def main():
             "security_groups_scanned": len(security_groups),
             "ec2_instances_scanned": len(ec2_instances),
             "ebs_volumes_scanned": len(ebs_volumes),
+            "s3_buckets_scanned": len(s3_buckets),
             "findings_count": len(findings),
             "severity_counts": severity_counts,
             "findings": [
@@ -666,6 +681,7 @@ def main():
     lines.append(f"  Security groups : {len(security_groups)}")
     lines.append(f"  EC2 instances   : {len(ec2_instances)}")
     lines.append(f"  EBS volumes     : {len(ebs_volumes)}")
+    lines.append(f"  S3 buckets      : {len(s3_buckets)}")
     lines.append("")
 
     if findings:

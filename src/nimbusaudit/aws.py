@@ -121,6 +121,102 @@ def get_ebs_volumes(
             required_permission="ec2:DescribeVolumes",
         )
 
+def _get_s3_public_access_block(
+        client,
+        bucket_name: str,
+) -> dict | None:
+    try:
+        response = client.get_public_access_block(
+            Bucket=bucket_name,
+        )
+    except ClientError as exc:
+        error_code = exc.response.get(
+            "Error",
+            {},
+        ).get("Code")
+
+        if error_code == "NoSuchPublicAccessBlockConfiguration":
+            return None
+
+        raise
+
+    return response.get("PublicAccessBlockConfiguration")
+
+def _get_s3_bucket_encryption(
+        client,
+        bucket_name: str,
+) -> dict | None:
+    try:
+        response = client.get_bucket_encryption(
+            Bucket=bucket_name,
+        )
+    except ClientError as exc:
+        error_code = exc.response.get(
+            "Error",
+            {},
+        ).get("Code")
+
+        if error_code == "ServerSideEncryptionConfigurationNotFoundError":
+            return None
+
+        raise
+
+    return response.get("ServerSideEncryptionConfiguration")
+
+def get_s3_buckets(
+        session,
+) -> list[dict]:
+    client = session.client("s3")
+
+    try:
+        response = client.list_buckets()
+        buckets = response.get("Buckets", [])
+
+        enriched_buckets = []
+
+        for bucket in buckets:
+            bucket_name = bucket.get("Name", "unknown-bucket")
+
+            enriched_bucket = {
+                **bucket,
+                "PublicAccessBlockConfiguration": _get_s3_public_access_block(
+                    client,
+                    bucket_name,
+                ),
+                "ServerSideEncryptionConfiguration": _get_s3_bucket_encryption(
+                    client,
+                    bucket_name,
+                ),
+            }
+
+            enriched_buckets.append(enriched_bucket)
+
+        return enriched_buckets
+
+    except NoCredentialsError as exc:
+        raise AwsError(
+            "AWS credentials were not found. Configure credentials with "
+            "'aws configure' or set AWS environment variables."
+        ) from exc
+
+    except EndpointConnectionError as exc:
+        raise AwsError(
+            f"Could not connect to the AWS endpoint: {exc}"
+        ) from exc
+
+    except ClientError as exc:
+        _raise_client_error(
+            exc,
+            resource_description="S3 buckets",
+            required_permission=(
+                "s3:ListAllMyBuckets, "
+                "s3:GetBucketPublicAccessBlock, "
+                "s3:GetEncryptionConfiguration"
+            ),
+        )
+
+
+
 
 class AwsError(Exception):
     """Raised when NimbusAudit cannot complete an AWS operation."""

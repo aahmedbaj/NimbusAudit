@@ -28,35 +28,39 @@ For example, an EC2 security group may unintentionally expose SSH to the public 
 
 ## Solution
 
-NimbusAudit will connect to an authorized AWS account using read-only permissions and inspect supported cloud resource configurations.
+NimbusAudit connects to an authorized AWS account using read-only permissions and inspects supported cloud resource configurations.
 
-It will identify potential security misconfigurations and display findings in a clear, readable format. Each finding will eventually include:
+It identifies potential security misconfigurations and displays findings in a clear, readable format. Each finding includes:
 
 * A severity level
 * The affected resource
 * Evidence of the detected configuration
 * A recommended remediation
+* Relevant security standards mappings
 
-As a command-line tool, NimbusAudit will be lightweight, script-friendly, and suitable for local use, Linux administration workflows, and future CI/CD integration.
+As a command-line tool, NimbusAudit is lightweight, script-friendly, and suitable for local use, Linux administration workflows, and CI/CD integration.
 
-## Initial Scope
+## Current Scope
 
-The first version of NimbusAudit will intentionally remain small.
+NimbusAudit currently:
 
-* Support AWS only
-* Operate as a command-line tool
-* Use Python and the AWS SDK for Python
-* Authenticate using an authorized AWS profile
-* Use read-only AWS permissions
-* Inspect EC2 security-group rules
-* Detect sensitive ports exposed to the public internet
-* Display findings in the terminal
+* Supports AWS
+* Operates as a command-line tool
+* Uses Python and the AWS SDK for Python
+* Authenticates using an authorized AWS profile
+* Uses read-only AWS permissions
+* Inspects EC2 security groups
+* Inspects EC2 instance metadata configuration
+* Inspects EBS volume encryption
+* Inspects S3 bucket Block Public Access configuration
+* Produces text and JSON reports
+* Supports output files, configurable failure thresholds, and selectable check groups
 
-Additional checks will be added only after the initial design is tested and stable.
+Additional services and checks will be added incrementally after their behavior and test coverage are validated.
 
 ## Out of Scope
 
-The initial version will not include:
+The current version does not include:
 
 * Automatic remediation
 * Resource creation, modification, or deletion
@@ -81,6 +85,7 @@ The initial version will not include:
 * Terraform in a later phase
 * Oracle Cloud Infrastructure in a later phase
 
+
 ## Project Status
 
 NimbusAudit is under active development.
@@ -89,17 +94,26 @@ The current version can:
 
 * Authenticate using an authorized AWS profile
 * Persist a default AWS profile, region, and output format
-* Retrieve EC2 security groups using paginated AWS API calls
-* Detect public IPv4 and IPv6 exposure
+* Retrieve supported AWS resources through Boto3
+* Detect public IPv4 and IPv6 security-group exposure
 * Detect publicly exposed SSH, RDP, MySQL, and PostgreSQL ports
 * Detect security groups that expose all protocols and ports
+* Detect EC2 instances that do not enforce IMDSv2
+* Detect unencrypted EBS volumes
+* Inspect S3 bucket Block Public Access configuration
+* Detect S3 buckets whose Block Public Access configuration is missing or not fully enabled
+* Run all checks or selected check groups
+* Provide an optional interactive check-selection menu
 * Produce text or JSON reports
+* Write reports to output files
 * Return exit codes suitable for scripting and CI/CD workflows
+* Apply a configurable finding-severity failure threshold
 * Serialize findings with severity, evidence, remediation, and standards mappings
+* Run automated tests through GitHub Actions
 
-The security-group scanning core is functional and covered by automated tests.
+The current scanning core is covered by 93 automated tests.
 
-Planned next steps include improved AWS error handling, EC2 and EBS checks, output-to-file support, and continuous integration.
+Planned next steps include expanding AWS service coverage, adding more rules to existing services, improving report presentation, and continuing to refine least-privilege permissions and documentation.
 
 ## Required AWS Permissions
 
@@ -109,12 +123,15 @@ The repository includes a reference IAM policy:
 
 [`docs/nimbusaudit-readonly-policy.json`](docs/nimbusaudit-readonly-policy.json)
 
-The current security-group scanner requires only:
+The current scanners require:
 
 ```text
 ec2:DescribeSecurityGroups
 ec2:DescribeInstances
 ec2:DescribeVolumes
+s3:ListAllMyBuckets
+s3:GetBucketPublicAccessBlock
+s3:GetEncryptionConfiguration
 ```
 
 The policy uses:
@@ -124,10 +141,22 @@ The policy uses:
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "NimbusAuditSecurityGroupReadOnly",
+      "Sid": "NimbusAuditEC2ReadOnly",
       "Effect": "Allow",
       "Action": [
-        "ec2:DescribeSecurityGroups"
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeInstances",
+        "ec2:DescribeVolumes"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "NimbusAuditS3ReadOnly",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration"
       ],
       "Resource": "*"
     }
@@ -230,7 +259,7 @@ nimbusaudit --format json --output-file report.txt
 NimbusAudit returns exit code `2` when the output file path is invalid or cannot be written.
 
 
-### Selecting check groups
+## Selecting check groups
 
 By default, NimbusAudit runs all available check groups:
 
@@ -252,10 +281,14 @@ nimbusaudit --checks ec2
 nimbusaudit --checks ebs
 ```
 
+```bash
+nimbusaudit --checks s3
+```
+
 You can also run multiple groups by separating them with commas:
 
 ```bash
-nimbusaudit --checks security-groups,ec2
+nimbusaudit --checks security-groups,s3
 ```
 
 To explicitly run every available group:
@@ -270,9 +303,72 @@ Available check groups:
 security-groups
 ec2
 ebs
+s3
 ```
 
 The `all` option cannot be combined with other groups.
+
+### Interactive menu
+
+NimbusAudit also includes an optional interactive menu:
+
+```bash
+nimbusaudit menu
+```
+
+The menu lets you select check groups without remembering the `--checks` syntax.
+
+Example menu:
+
+```text
+NimbusAudit menu
+========================================================================
+
+Select check groups to run:
+
+  0. exit
+  1. security-groups
+  2. ec2
+  3. ebs
+  4. s3
+  a. all
+
+Enter one option or multiple check numbers separated by commas.
+Examples: 1,4 or a
+```
+
+Examples:
+
+```text
+1
+```
+
+Runs only security-group checks.
+
+```text
+1,4
+```
+
+Runs security-group and S3 checks.
+
+```text
+a
+```
+
+Runs all checks.
+
+```text
+0
+```
+
+Exits without starting a scan.
+
+The menu is intended for interactive use. For automation and CI/CD, prefer direct CLI flags such as:
+
+```bash
+nimbusaudit --checks security-groups,s3
+```
+
 
 ### Configuring failure threshold
 
@@ -322,63 +418,3 @@ Failure behavior:
 | `--fail-on low` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
 
 NimbusAudit returns exit code `2` for scan, configuration, AWS, or output errors.
-
-### Interactive menu
-
-NimbusAudit also includes an optional interactive menu:
-
-```bash
-nimbusaudit menu
-```
-
-The menu lets you select check groups without remembering the `--checks` syntax.
-
-Example menu:
-
-```text
-NimbusAudit menu
-========================================================================
-
-Select check groups to run:
-
-  0. exit
-  1. security-groups
-  2. ec2
-  3. ebs
-  *. all
-
-Enter one option or multiple check numbers separated by commas.
-Examples: 1,3 or *
-```
-
-Examples:
-
-```text
-1
-```
-
-Runs only security group checks.
-
-```text
-1,3
-```
-
-Runs security group and EBS checks.
-
-```text
-*
-```
-
-Runs all checks.
-
-```text
-0
-```
-
-Exits without starting a scan.
-
-The menu is intended for interactive use. For automation and CI/CD, prefer direct CLI flags such as:
-
-```bash
-nimbusaudit --checks security-groups,ebs
-```

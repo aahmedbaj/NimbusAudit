@@ -36,7 +36,11 @@ def check_imdsv2_not_enforced(
             "Configure the instance metadata options to require "
             "IMDSv2 by setting HttpTokens to 'required'."
         ),
-        standards=[],
+        standards=[
+            "AWS Security Hub EC2.8",
+            "NIST.800-53.r5 AC-3",
+            "NIST.800-53.r5 AC-6",
+        ],
     )
 
 

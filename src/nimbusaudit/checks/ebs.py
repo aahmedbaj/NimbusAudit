@@ -28,7 +28,11 @@ def check_unencrypted_ebs_volume(
             "Create an encrypted snapshot or copy, create a new "
             "encrypted volume from it, and replace the unencrypted volume."
         ),
-        standards=[],
+        standards=[
+            "AWS Security Hub EC2.3",
+            "NIST.800-53.r5 SC-13",
+            "NIST.800-53.r5 SC-28",
+        ],
     )
 
 
