@@ -90,36 +90,10 @@ review findings
       ↓
 terraform destroy
 ```
-## Current Lab Resources
-
-This phase creates:
-
-- VPC
-- Public subnet
-- Internet gateway
-- Public route table
-- Route table association
-- Security group with SSH open to `0.0.0.0/0`
-
-## Expected NimbusAudit Finding
-
-Running:
-
-```bash
-nimbusaudit --checks security-groups
-```
-
-should detect:
-
-```text
-AWS-EC2-SG-001
-SSH exposed to the public internet
-```
-
 
 ## Current Lab Resources
 
-This phase creates:
+This lab currently creates:
 
 - VPC
 - Public subnet
@@ -130,30 +104,38 @@ This phase creates:
 - EC2 instance attached to the vulnerable security group
 - EC2 instance with IMDSv2 not enforced
 - Root EBS volume encryption test case
+- S3 bucket with incomplete Block Public Access configuration
+- S3 bucket using SSE-S3 encryption instead of AWS KMS
 
 ## Expected NimbusAudit Findings
 
 Running:
 
-```bash
-nimbusaudit --checks security-groups,ec2,ebs
-```
+~~~bash
+nimbusaudit --checks security-groups,ec2,ebs,s3
+~~~
 
 should detect:
 
-```text
+~~~text
 AWS-EC2-SG-001
 SSH exposed to the public internet
 
 AWS-EC2-INSTANCE-001
 IMDSv2 is not enforced
-```
+
+AWS-S3-BUCKET-001
+S3 bucket does not fully block public access
+
+AWS-S3-BUCKET-003
+S3 bucket default encryption does not use AWS KMS
+~~~
 
 Depending on AWS account or region defaults, it may also detect:
 
-```text
+~~~text
 AWS-EC2-EBS-001
 EBS volume is not encrypted
-```
+~~~
 
-Some AWS accounts enforce EBS encryption by default. In that case, the EBS finding may not appear even when the Terraform configuration requests `encrypted = false`.
+The S3 lab intentionally uses SSE-S3 (`AES256`) instead of AWS KMS so NimbusAudit can detect the KMS posture finding.

@@ -6,6 +6,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
@@ -172,3 +176,41 @@ resource "aws_instance" "public_demo" {
     }
   )
 }
+
+resource "random_id" "bucket_suffix" {
+  byte_length = 4
+}
+
+resource "aws_s3_bucket" "demo" {
+  bucket = "${var.s3_bucket_name_prefix}-${random_id.bucket_suffix.hex}"
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.name_prefix}-s3-demo-bucket"
+    }
+  )
+}
+
+resource "aws_s3_bucket_public_access_block" "demo" {
+  bucket = aws_s3_bucket.demo.id
+
+  block_public_acls       = true
+  ignore_public_acls      = true
+  block_public_policy     = false #This intentionally makes Public Access Block incomplete.
+  restrict_public_buckets = false #This intentionally makes Public Access Block incomplete.
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "demo" {
+  bucket = aws_s3_bucket.demo.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+    #NimbusAudit should detect: AWS-S3-BUCKET-003 because the bucket encryption does not use:
+    # aws:kms  or aws:kms:dsse
+  }
+}
+
+

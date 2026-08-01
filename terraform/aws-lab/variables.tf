@@ -35,3 +35,8 @@ variable "ec2_ami_name_pattern" {
   type        = string
   default     = "al2023-ami-2023.*-x86_64"
 }
+variable "s3_bucket_name_prefix" {
+  description = "Prefix used for the intentionally vulnerable S3 bucket name."
+  type        = string
+  default     = "nimbusaudit-lab"
+}

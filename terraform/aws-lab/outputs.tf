@@ -47,3 +47,12 @@ output "public_demo_root_volume_id" {
   value       = aws_instance.public_demo.root_block_device[0].volume_id
 }
 
+output "demo_s3_bucket_name" {
+  description = "Name of the intentionally weak S3 demo bucket."
+  value       = aws_s3_bucket.demo.bucket
+}
+
+output "demo_s3_bucket_public_access_block_id" {
+  description = "ID of the S3 bucket public access block configuration."
+  value       = aws_s3_bucket_public_access_block.demo.id
+}
