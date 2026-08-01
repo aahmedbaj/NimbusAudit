@@ -43,3 +43,9 @@ reports/
 
 # LAB-SPECIFIC SCRIPTS
 scripts/public_ec2_ip_update.sh
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
