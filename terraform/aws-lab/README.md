@@ -115,3 +115,45 @@ should detect:
 AWS-EC2-SG-001
 SSH exposed to the public internet
 ```
+
+
+## Current Lab Resources
+
+This phase creates:
+
+- VPC
+- Public subnet
+- Internet gateway
+- Public route table
+- Route table association
+- Security group with SSH open to `0.0.0.0/0`
+- EC2 instance attached to the vulnerable security group
+- EC2 instance with IMDSv2 not enforced
+- Root EBS volume encryption test case
+
+## Expected NimbusAudit Findings
+
+Running:
+
+```bash
+nimbusaudit --checks security-groups,ec2,ebs
+```
+
+should detect:
+
+```text
+AWS-EC2-SG-001
+SSH exposed to the public internet
+
+AWS-EC2-INSTANCE-001
+IMDSv2 is not enforced
+```
+
+Depending on AWS account or region defaults, it may also detect:
+
+```text
+AWS-EC2-EBS-001
+EBS volume is not encrypted
+```
+
+Some AWS accounts enforce EBS encryption by default. In that case, the EBS finding may not appear even when the Terraform configuration requests `encrypted = false`.

@@ -38,6 +38,34 @@ resource "aws_vpc" "lab" {
   )
 }
 
+data "aws_ami" "amazon_linux_2023" { #to avoid hardcoding ami id, because ami id can differ between regions
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name = "name"
+    values = [
+      var.ec2_ami_name_pattern
+    ]
+  }
+
+  filter {
+    name = "architecture"
+    values = [
+      "x86_64"
+    ]
+  }
+
+  filter {
+    name = "virtualization-type"
+    values = [
+      "hvm"
+    ]
+  }
+}
+
+
+
 resource "aws_subnet" "public" {
   vpc_id                  = aws_vpc.lab.id
   cidr_block              = var.public_subnet_cidr_block
@@ -108,6 +136,39 @@ resource "aws_security_group" "public_ssh" {
     local.common_tags,
     {
       Name = "${var.name_prefix}-public-ssh-sg"
+    }
+  )
+}
+
+
+resource "aws_instance" "public_demo" {
+  ami                         = data.aws_ami.amazon_linux_2023.id
+  instance_type               = var.instance_type
+  subnet_id                   = aws_subnet.public.id
+  vpc_security_group_ids      = [aws_security_group.public_ssh.id]
+  associate_public_ip_address = true
+
+  metadata_options {
+    http_tokens = "optional" #This is intentional. It means IMDSv2 is not required, so NimbusAudit should detect it.
+  }
+
+  root_block_device {
+    encrypted   = false
+    volume_type = "gp3"
+    volume_size = 8
+
+    tags = merge(
+      local.common_tags,
+      {
+        Name = "${var.name_prefix}-public-demo-root-volume"
+      }
+    )
+  }
+
+  tags = merge(
+    local.common_tags,
+    {
+      Name = "${var.name_prefix}-public-demo-instance"
     }
   )
 }

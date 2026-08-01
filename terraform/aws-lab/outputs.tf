@@ -31,3 +31,19 @@ output "public_ssh_security_group_id" {
   description = "ID of the intentionally vulnerable public SSH security group."
   value       = aws_security_group.public_ssh.id
 }
+
+output "public_demo_instance_id" {
+  description = "ID of the public demo EC2 instance."
+  value       = aws_instance.public_demo.id
+}
+
+output "public_demo_instance_public_ip" {
+  description = "Public IP address of the public demo EC2 instance."
+  value       = aws_instance.public_demo.public_ip
+}
+
+output "public_demo_root_volume_id" {
+  description = "Root EBS volume ID attached to the public demo EC2 instance."
+  value       = aws_instance.public_demo.root_block_device[0].volume_id
+}
+
