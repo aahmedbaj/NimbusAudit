@@ -90,3 +90,28 @@ review findings
       ↓
 terraform destroy
 ```
+## Current Lab Resources
+
+This phase creates:
+
+- VPC
+- Public subnet
+- Internet gateway
+- Public route table
+- Route table association
+- Security group with SSH open to `0.0.0.0/0`
+
+## Expected NimbusAudit Finding
+
+Running:
+
+```bash
+nimbusaudit --checks security-groups
+```
+
+should detect:
+
+```text
+AWS-EC2-SG-001
+SSH exposed to the public internet
+```

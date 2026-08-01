@@ -12,3 +12,22 @@ output "name_prefix" {
   description = "Resource name prefix used by the lab."
   value       = var.name_prefix
 }
+output "vpc_id" {
+  description = "ID of the NimbusAudit lab VPC."
+  value       = aws_vpc.lab.id
+}
+
+output "public_subnet_id" {
+  description = "ID of the public subnet."
+  value       = aws_subnet.public.id
+}
+
+output "public_route_table_id" {
+  description = "ID of the public route table."
+  value       = aws_route_table.public.id
+}
+
+output "public_ssh_security_group_id" {
+  description = "ID of the intentionally vulnerable public SSH security group."
+  value       = aws_security_group.public_ssh.id
+}
