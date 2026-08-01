@@ -619,6 +619,62 @@ Example structure:
 
 ---
 
+## Terraform Demo Lab
+
+NimbusAudit includes a Terraform-based AWS demo lab under:
+
+~~~text
+terraform/aws-lab
+~~~
+
+The lab creates intentionally misconfigured AWS resources so NimbusAudit can produce predictable findings.
+
+The lab currently includes:
+
+- VPC
+- Public subnet
+- Internet gateway
+- Public route table
+- Security group with SSH open to `0.0.0.0/0`
+- EC2 instance with IMDSv2 not enforced
+- Root EBS volume encryption test case
+- S3 bucket with incomplete Block Public Access configuration
+- S3 bucket using SSE-S3 encryption instead of AWS KMS
+
+Deploy the lab:
+
+~~~bash
+cd terraform/aws-lab
+terraform init
+terraform plan \
+  -var="aws_profile=<your-profile>" \
+  -var="aws_region=eu-central-1"
+terraform apply \
+  -var="aws_profile=<your-profile>" \
+  -var="aws_region=eu-central-1"
+~~~
+
+Run NimbusAudit against the lab:
+
+~~~bash
+cd ../..
+nimbusaudit \
+  --profile <your-profile> \
+  --region eu-central-1 \
+  --checks security-groups,ec2,ebs,s3
+~~~
+
+Destroy the lab after testing:
+
+~~~bash
+cd terraform/aws-lab
+terraform destroy \
+  -var="aws_profile=<your-profile>" \
+  -var="aws_region=eu-central-1"
+~~~
+
+This lab is intended for controlled security testing only. Do not deploy it in a production AWS account.
+
 ## Development
 
 Install development dependencies:
@@ -651,7 +707,7 @@ The project uses GitHub Actions to run the test suite automatically on pushes an
 
 ## Project Status
 
-NimbusAudit `v0.1.0` is the first complete AWS-focused release.
+NimbusAudit `v0.1.0` introduced the AWS scanner. NimbusAudit `v0.2.0` adds a Terraform-based AWS lab for reproducible demonstrations.
 
 The current version can:
 
@@ -675,6 +731,9 @@ The current version can:
 * Apply a configurable finding-severity failure threshold
 * Serialize findings with severity, evidence, remediation, and standards mappings
 * Run automated tests through GitHub Actions
+* Includes a Terraform AWS lab for reproducible demos
+* Creates intentionally vulnerable AWS resources for controlled testing 
+* Documents the apply → scan → destroy workflow
 
 ---
 
