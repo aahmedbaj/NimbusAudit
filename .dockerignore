@@ -1,0 +1,46 @@
+# Git
+.git/
+.gitignore
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Python cache and test artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+
+# Local environment files and credentials
+.env
+.env.*
+.aws/
+*.pem
+*.key
+
+# NimbusAudit generated output
+outputs/
+*.log
+
+# Terraform runtime files
+terraform/**/.terraform/
+terraform/**/*.tfstate
+terraform/**/*.tfstate.*
+terraform/**/*.tfvars
+terraform/**/*.tfvars.json
+terraform/**/crash.log
+terraform/**/crash.*.log
+terraform/**/.terraform.tfstate.lock.info
