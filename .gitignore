@@ -32,9 +32,9 @@ dist/
 
 # Generated NimbusAudit reports
 
-reports/
+outputs/
 *.json
-*.html
+*.text
 
 # IDE settings
 

@@ -53,6 +53,10 @@ NimbusAudit currently focuses on AWS. Additional providers and infrastructure-as
 * CI/CD-friendly exit codes
 * Automated tests with pytest
 * GitHub Actions CI workflow
+* Containerized CLI execution with Docker
+* Non-root container runtime
+* Secure Docker runner using temporary least-privilege AWS credentials
+* Persistent Docker report output through a bind-mounted `outputs/` directory
 
 ---
 
@@ -92,7 +96,7 @@ NimbusAudit currently focuses on AWS. Additional providers and infrastructure-as
 
 ## Out of Scope
 
-NimbusAudit `v0.1.0` does not include:
+NimbusAudit does not include:
 
 * Automatic remediation
 * Resource creation, modification, or deletion
@@ -106,7 +110,7 @@ NimbusAudit `v0.1.0` does not include:
 
 ---
 
-## Installation
+## Local Installation
 
 Clone the repository:
 
@@ -139,17 +143,298 @@ pytest
 
 ## AWS Credentials
 
-NimbusAudit uses your existing AWS credentials.
+NimbusAudit uses authorized AWS credentials and should be run with least-privilege permissions, not an administrator identity.
 
-You can use a normal AWS CLI profile:
+For local execution, authenticate the AWS profile used by NimbusAudit according to your AWS CLI setup.
+
+For example, with AWS CLI login:
 
 ```bash
-aws configure --profile nimbusaudit-readonly
+aws login --profile <source-profile>
 ```
 
-Or use a profile that assumes a dedicated read-only IAM role.
+A recommended setup is to use a dedicated AWS CLI profile that assumes a least-privilege NimbusAudit IAM role.
 
-NimbusAudit should be run with least-privilege permissions, not an administrator profile.
+Conceptually:
+
+```text
+authorized source identity
+        ↓
+STS AssumeRole
+        ↓
+NimbusAuditReadOnlyRole
+        ↓
+temporary restricted credentials
+        ↓
+NimbusAudit
+```
+
+For Docker execution, NimbusAudit does **not** mount the host `~/.aws` directory into the container.
+
+Instead, the provided `scripts/run-docker.sh` wrapper lets the host AWS CLI resolve or refresh authentication, assume the least-privilege role, export one temporary STS credential set, and mount only that temporary credentials file into the container as read-only.
+
+This keeps the host AWS login cache, source profile, refresh state, and other AWS profiles outside the container.
+
+---
+
+## Docker
+
+NimbusAudit can run as the same CLI inside a Docker container.
+
+### Build the Image
+
+From the repository root:
+
+```bash
+docker build -t nimbusaudit .
+```
+
+Verify the CLI:
+
+```bash
+docker run --rm nimbusaudit --help
+```
+
+Running the image without additional arguments also displays help:
+
+```bash
+docker run --rm nimbusaudit
+```
+
+The image runs NimbusAudit as a non-root Linux user.
+
+### Recommended AWS Workflow
+
+For AWS scans, use:
+
+```text
+scripts/run-docker.sh
+```
+
+instead of bind-mounting the entire host `~/.aws` directory.
+
+The wrapper performs the credential handoff on the host:
+
+```text
+host AWS login/profile
+        ↓
+resolve or refresh authentication
+        ↓
+assume NimbusAuditReadOnlyRole
+        ↓
+export temporary STS credentials
+        ↓
+create a private temporary credentials file
+        ↓
+mount that single file read-only into Docker
+        ↓
+run NimbusAudit
+        ↓
+delete the temporary credential file
+```
+
+The container receives only the temporary credentials supplied for the NimbusAudit scan.
+
+It does **not** receive:
+
+* The host `~/.aws` directory
+* The source or administrator profile configuration
+* AWS login cache files
+* Login refresh state
+* Other AWS profiles
+* Persistent AWS access keys
+
+The default profile expected by the wrapper is:
+
+```text
+nimbusaudit-readonly
+```
+
+A role-based AWS CLI profile can look like:
+
+```ini
+[profile nimbusaudit-readonly]
+role_arn = arn:aws:iam::<account-id>:role/NimbusAuditReadOnlyRole
+source_profile = <source-profile>
+region = eu-central-1
+role_session_name = nimbusaudit-local
+```
+
+The source identity must be trusted by `NimbusAuditReadOnlyRole` to perform `sts:AssumeRole`.
+
+Verify role assumption on the host:
+
+```bash
+aws sts get-caller-identity \
+  --profile nimbusaudit-readonly
+```
+
+The returned ARN should identify an assumed role, for example:
+
+```text
+arn:aws:sts::<account-id>:assumed-role/NimbusAuditReadOnlyRole/nimbusaudit-local
+```
+
+### Run a Dockerized Scan
+
+Make the wrapper executable once:
+
+```bash
+chmod +x scripts/run-docker.sh
+```
+
+Then run NimbusAudit:
+
+```bash
+./scripts/run-docker.sh \
+  --region eu-central-1 \
+  --checks security-groups,s3
+```
+
+The wrapper automatically supplies:
+
+```text
+--profile nimbusaudit-readonly
+```
+
+All remaining arguments are forwarded directly to the NimbusAudit CLI.
+
+For example:
+
+```bash
+./scripts/run-docker.sh \
+  --region eu-central-1 \
+  --checks security-groups,ec2,ebs,s3 \
+  --fail-on high
+```
+
+### Override the AWS Profile
+
+The wrapper uses:
+
+```text
+nimbusaudit-readonly
+```
+
+by default.
+
+Override it with the `NIMBUSAUDIT_AWS_PROFILE` environment variable:
+
+```bash
+NIMBUSAUDIT_AWS_PROFILE=<profile> \
+./scripts/run-docker.sh \
+  --region eu-central-1 \
+  --checks s3
+```
+
+The selected profile should resolve to credentials appropriate for NimbusAudit. A dedicated least-privilege role is recommended.
+
+### Override the Docker Image
+
+The wrapper uses:
+
+```text
+nimbusaudit
+```
+
+by default.
+
+Override it with:
+
+```bash
+NIMBUSAUDIT_IMAGE=<image> \
+./scripts/run-docker.sh \
+  --region eu-central-1 \
+  --checks s3
+```
+
+### Save Docker Reports to the Host
+
+The wrapper automatically creates and bind-mounts:
+
+```text
+<ProjectRoot>/outputs
+```
+
+to:
+
+```text
+/outputs
+```
+
+inside the container.
+
+To save a JSON report:
+
+```bash
+./scripts/run-docker.sh \
+  --region eu-central-1 \
+  --checks security-groups,s3 \
+  --format json \
+  --output-file /outputs/report.json
+```
+
+After the container exits, the report remains on the host at:
+
+```text
+outputs/report.json
+```
+
+For text output:
+
+```bash
+./scripts/run-docker.sh \
+  --region eu-central-1 \
+  --format text \
+  --output-file /outputs/report.txt
+```
+
+The AWS credential file is mounted read-only.
+
+The `/outputs` directory is intentionally mounted read/write so reports can persist on the host after the container exits.
+
+### Docker Credential Boundary
+
+The wrapper exports credentials on the host with:
+
+```bash
+aws configure export-credentials \
+  --profile nimbusaudit-readonly \
+  --format env
+```
+
+The host AWS CLI is responsible for:
+
+* Resolving the source profile
+* Refreshing host authentication when necessary
+* Assuming the NimbusAudit IAM role
+* Obtaining temporary STS credentials
+
+Only the resulting temporary credential set is written to a private temporary file.
+
+Inside the container, the wrapper sets:
+
+```text
+AWS_SHARED_CREDENTIALS_FILE=/run/nimbusaudit/aws-credentials
+```
+
+This tells Boto3 where to find the temporary shared credentials file.
+
+It does not redirect or expose the host `~/.aws` directory.
+
+### Docker Exit Codes
+
+The wrapper preserves NimbusAudit's normal exit-code semantics:
+
+| Exit code | Meaning                                                                                                 |
+| --------: | ------------------------------------------------------------------------------------------------------- |
+|       `0` | Scan completed successfully and no findings met the configured failure threshold.                       |
+|       `1` | Scan completed successfully, but one or more findings met or exceeded the configured failure threshold. |
+|       `2` | NimbusAudit could not complete because of input, configuration, AWS, output, or wrapper setup errors.   |
+
+Docker treats any non-zero process exit status generically as a failed container command.
+
+For NimbusAudit, exit code `1` does **not** mean the scan failed to execute. It means the scan completed successfully and detected findings that met the configured failure threshold.
 
 ---
 
@@ -214,9 +499,11 @@ IAM policy document
 NimbusAuditReadOnlyRole
         ↓ assumed through
 nimbusaudit-readonly AWS profile
-        ↓ stored as the default through
-nimbusaudit configure
+        ↓ used by
+NimbusAudit
 ```
+
+The role trust policy determines **who can assume the role**, while the NimbusAudit permissions policy determines **what the assumed role can do**.
 
 ---
 
@@ -623,27 +910,27 @@ Example structure:
 
 NimbusAudit includes a Terraform-based AWS demo lab under:
 
-~~~text
+```text
 terraform/aws-lab
-~~~
+```
 
 The lab creates intentionally misconfigured AWS resources so NimbusAudit can produce predictable findings.
 
 The lab currently includes:
 
-- VPC
-- Public subnet
-- Internet gateway
-- Public route table
-- Security group with SSH open to `0.0.0.0/0`
-- EC2 instance with IMDSv2 not enforced
-- Root EBS volume encryption test case
-- S3 bucket with incomplete Block Public Access configuration
-- S3 bucket using SSE-S3 encryption instead of AWS KMS
+* VPC
+* Public subnet
+* Internet gateway
+* Public route table
+* Security group with SSH open to `0.0.0.0/0`
+* EC2 instance with IMDSv2 not enforced
+* Root EBS volume encryption test case
+* S3 bucket with incomplete Block Public Access configuration
+* S3 bucket using SSE-S3 encryption instead of AWS KMS
 
 Deploy the lab:
 
-~~~bash
+```bash
 cd terraform/aws-lab
 terraform init
 terraform plan \
@@ -652,28 +939,30 @@ terraform plan \
 terraform apply \
   -var="aws_profile=<your-profile>" \
   -var="aws_region=eu-central-1"
-~~~
+```
 
 Run NimbusAudit against the lab:
 
-~~~bash
+```bash
 cd ../..
 nimbusaudit \
   --profile <your-profile> \
   --region eu-central-1 \
   --checks security-groups,ec2,ebs,s3
-~~~
+```
 
 Destroy the lab after testing:
 
-~~~bash
+```bash
 cd terraform/aws-lab
 terraform destroy \
   -var="aws_profile=<your-profile>" \
   -var="aws_region=eu-central-1"
-~~~
+```
 
 This lab is intended for controlled security testing only. Do not deploy it in a production AWS account.
+
+---
 
 ## Development
 
@@ -707,9 +996,13 @@ The project uses GitHub Actions to run the test suite automatically on pushes an
 
 ## Project Status
 
-NimbusAudit `v0.1.0` introduced the AWS scanner. NimbusAudit `v0.2.0` adds a Terraform-based AWS lab for reproducible demonstrations.
+NimbusAudit `v0.1.0` introduced the AWS scanner.
 
-The current version can:
+NimbusAudit `v0.2.0` added a Terraform-based AWS lab for reproducible demonstrations.
+
+Docker support is being added for `v0.3.0`.
+
+The current development version can:
 
 * Authenticate using an authorized AWS profile
 * Persist a default AWS profile, region, and output format
@@ -731,9 +1024,17 @@ The current version can:
 * Apply a configurable finding-severity failure threshold
 * Serialize findings with severity, evidence, remediation, and standards mappings
 * Run automated tests through GitHub Actions
-* Includes a Terraform AWS lab for reproducible demos
-* Creates intentionally vulnerable AWS resources for controlled testing 
-* Documents the apply → scan → destroy workflow
+* Include a Terraform AWS lab for reproducible demos
+* Create intentionally vulnerable AWS resources for controlled testing
+* Document the apply → scan → destroy workflow
+* Build and run NimbusAudit as a Dockerized CLI
+* Run the container as a non-root user
+* Resolve and export temporary AWS credentials on the host for Docker scans
+* Use a dedicated least-privilege IAM role for containerized scans
+* Mount only a temporary credential file into the container as read-only
+* Keep the host AWS identity store outside the container
+* Persist Docker-generated reports through the host `outputs/` directory
+* Preserve NimbusAudit exit-code semantics through the Docker wrapper
 
 ---
 
@@ -741,8 +1042,8 @@ The current version can:
 
 Planned future work:
 
-* Add a Terraform-based AWS lab environment for reproducible demos
-* Add Docker support for containerized execution
+* Add Docker image build validation to GitHub Actions
+* Complete Docker hardening and release `v0.3.0`
 * Add more AWS checks, such as IAM, CloudTrail, RDS, and Lambda
 * Add Terraform static analysis for selected AWS misconfigurations
 * Improve report formatting and summaries
@@ -757,6 +1058,11 @@ NimbusAudit is intended for defensive security auditing only.
 Use it only with AWS accounts and resources you own or are authorized to assess.
 
 NimbusAudit does not exploit resources, modify cloud configurations, or perform active attacks.
+
+For Dockerized AWS scans, the recommended workflow provides two separate security boundaries:
+
+* **Docker/filesystem boundary:** the container does not receive the host `~/.aws` identity store.
+* **AWS/IAM boundary:** the credentials deliberately supplied to the container belong to a dedicated least-privilege NimbusAudit role.
 
 ---
 
