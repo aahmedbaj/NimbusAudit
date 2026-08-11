@@ -218,9 +218,11 @@ The wrapper performs the credential handoff on the host:
 ```text
 host AWS login/profile
         ↓
+resolve effective NimbusAudit profile
+        ↓
 resolve or refresh authentication
         ↓
-assume NimbusAuditReadOnlyRole
+assume NimbusAuditReadOnlyRole when applicable
         ↓
 export temporary STS credentials
         ↓
@@ -243,12 +245,6 @@ It does **not** receive:
 * Login refresh state
 * Other AWS profiles
 * Persistent AWS access keys
-
-The default profile expected by the wrapper is:
-
-```text
-nimbusaudit-readonly
-```
 
 A role-based AWS CLI profile can look like:
 
@@ -275,6 +271,78 @@ The returned ARN should identify an assumed role, for example:
 arn:aws:sts::<account-id>:assumed-role/NimbusAuditReadOnlyRole/nimbusaudit-local
 ```
 
+### Docker Configuration
+
+Dockerized NimbusAudit reuses the same persistent configuration as the local CLI:
+
+```text
+~/.config/nimbusaudit/config.json
+```
+
+The wrapper bind-mounts the NimbusAudit configuration directory into the container, so configuration changes made through Docker persist on the host.
+
+Run the interactive configuration command with:
+
+```bash
+./scripts/run-docker.sh configure
+```
+
+You can also configure values non-interactively:
+
+```bash
+./scripts/run-docker.sh configure \
+  --profile nimbusaudit-readonly \
+  --region eu-central-1 \
+  --format json
+```
+
+The updated configuration is written to the same host file used by the local CLI:
+
+```text
+~/.config/nimbusaudit/config.json
+```
+
+The container itself remains ephemeral. The configuration persists because the host configuration directory is bind-mounted read/write.
+
+### AWS Profile Resolution
+
+For Docker scans, the wrapper resolves the AWS profile using this precedence:
+
+```text
+explicit --profile
+        ↓ if absent
+profile saved in ~/.config/nimbusaudit/config.json
+        ↓ if absent
+nimbusaudit-readonly
+```
+
+For example:
+
+```bash
+./scripts/run-docker.sh \
+  --profile nimbusaudit-readonly \
+  --region eu-central-1
+```
+
+uses the explicitly supplied profile for that run.
+
+If `--profile` is omitted, the wrapper uses the profile saved by `nimbusaudit configure`.
+
+If no saved profile exists, it falls back to:
+
+```text
+nimbusaudit-readonly
+```
+
+An explicitly requested invalid profile causes the wrapper to fail instead of silently falling back to another AWS identity.
+
+The resolved profile is used both:
+
+* by the host AWS CLI when exporting temporary credentials
+* by NimbusAudit inside the container
+
+This keeps the host credential identity and container scan identity synchronized.
+
 ### Run a Dockerized Scan
 
 Make the wrapper executable once:
@@ -287,47 +355,46 @@ Then run NimbusAudit:
 
 ```bash
 ./scripts/run-docker.sh \
-  --region eu-central-1 \
-  --checks security-groups,s3
+  --region eu-central-1
 ```
 
-The wrapper automatically supplies:
+NimbusAudit arguments are passed through the wrapper while Docker-specific details such as credential mounts and output mounts are handled automatically.
 
-```text
---profile nimbusaudit-readonly
+A dedicated least-privilege AWS profile such as `nimbusaudit-readonly` is recommended.
+
+### Interactive Menu
+
+The wrapper supports NimbusAudit's interactive menu:
+
+```bash
+./scripts/run-docker.sh menu
 ```
 
-All remaining arguments are forwarded directly to the NimbusAudit CLI.
+The wrapper automatically starts Docker with an interactive terminal for `menu`.
 
-For example:
+Global NimbusAudit options must appear **before** the `menu` subcommand.
+
+Correct:
 
 ```bash
 ./scripts/run-docker.sh \
   --region eu-central-1 \
-  --checks security-groups,ec2,ebs,s3 \
-  --fail-on high
+  --format json \
+  --output-file report.json \
+  menu
 ```
 
-### Override the AWS Profile
-
-The wrapper uses:
-
-```text
-nimbusaudit-readonly
-```
-
-by default.
-
-Override it with the `NIMBUSAUDIT_AWS_PROFILE` environment variable:
+Incorrect:
 
 ```bash
-NIMBUSAUDIT_AWS_PROFILE=<profile> \
-./scripts/run-docker.sh \
+./scripts/run-docker.sh menu \
   --region eu-central-1 \
-  --checks s3
+  --output-file report.json
 ```
 
-The selected profile should resolve to credentials appropriate for NimbusAudit. A dedicated least-privilege role is recommended.
+This follows NimbusAudit's CLI structure: global options belong to the top-level command, while `menu` is a subcommand.
+
+The container is still started with `--rm`, so it is automatically removed after the interactive session finishes.
 
 ### Override the Docker Image
 
@@ -344,8 +411,7 @@ Override it with:
 ```bash
 NIMBUSAUDIT_IMAGE=<image> \
 ./scripts/run-docker.sh \
-  --region eu-central-1 \
-  --checks s3
+  --region eu-central-1
 ```
 
 ### Save Docker Reports to the Host
@@ -364,14 +430,20 @@ to:
 
 inside the container.
 
-To save a JSON report:
+Relative `--output-file` values are automatically mapped into the mounted `/outputs` directory.
+
+For example:
 
 ```bash
 ./scripts/run-docker.sh \
-  --region eu-central-1 \
-  --checks security-groups,s3 \
   --format json \
-  --output-file /outputs/report.json
+  --output-file report.json
+```
+
+is translated internally to:
+
+```text
+/outputs/report.json
 ```
 
 After the container exits, the report remains on the host at:
@@ -380,14 +452,30 @@ After the container exits, the report remains on the host at:
 outputs/report.json
 ```
 
-For text output:
+If no extension is provided:
 
 ```bash
 ./scripts/run-docker.sh \
-  --region eu-central-1 \
   --format text \
-  --output-file /outputs/report.txt
+  --output-file report
 ```
+
+NimbusAudit writes:
+
+```text
+outputs/report.txt
+```
+
+Absolute container paths remain unchanged.
+
+For example:
+
+```bash
+./scripts/run-docker.sh \
+  --output-file /outputs/custom-report.txt
+```
+
+writes directly through the mounted `/outputs` directory.
 
 The AWS credential file is mounted read-only.
 
@@ -395,11 +483,11 @@ The `/outputs` directory is intentionally mounted read/write so reports can pers
 
 ### Docker Credential Boundary
 
-The wrapper exports credentials on the host with:
+The wrapper resolves the effective AWS profile and exports credentials on the host with the equivalent of:
 
 ```bash
 aws configure export-credentials \
-  --profile nimbusaudit-readonly \
+  --profile <resolved-profile> \
   --format env
 ```
 
@@ -407,8 +495,8 @@ The host AWS CLI is responsible for:
 
 * Resolving the source profile
 * Refreshing host authentication when necessary
-* Assuming the NimbusAudit IAM role
-* Obtaining temporary STS credentials
+* Assuming the NimbusAudit IAM role when applicable
+* Obtaining temporary credentials
 
 Only the resulting temporary credential set is written to a private temporary file.
 
@@ -421,6 +509,8 @@ AWS_SHARED_CREDENTIALS_FILE=/run/nimbusaudit/aws-credentials
 This tells Boto3 where to find the temporary shared credentials file.
 
 It does not redirect or expose the host `~/.aws` directory.
+
+The temporary credential file is mounted into the container as read-only and deleted by the wrapper after execution.
 
 ### Docker Exit Codes
 
@@ -1029,11 +1119,14 @@ The current development version can:
 * Document the apply → scan → destroy workflow
 * Build and run NimbusAudit as a Dockerized CLI
 * Run the container as a non-root user
+* Keep Docker containers ephemeral while persisting NimbusAudit configuration and reports on the host
+* Reuse `~/.config/nimbusaudit/config.json` across local and Docker execution
+* Support interactive `menu` and `configure` commands through the Docker wrapper
+* Resolve AWS profile precedence as CLI override → saved configuration → `nimbusaudit-readonly`
 * Resolve and export temporary AWS credentials on the host for Docker scans
-* Use a dedicated least-privilege IAM role for containerized scans
-* Mount only a temporary credential file into the container as read-only
+* Mount only the temporary credential file into the container as read-only
 * Keep the host AWS identity store outside the container
-* Persist Docker-generated reports through the host `outputs/` directory
+* Translate relative Docker output paths into the persistent `/outputs` mount
 * Preserve NimbusAudit exit-code semantics through the Docker wrapper
 
 ---

@@ -2,12 +2,107 @@
 
 set -Eeuo pipefail
 
-AWS_PROFILE_NAME="${NIMBUSAUDIT_AWS_PROFILE:-nimbusaudit-readonly}"
+CONFIG_DIR="$HOME/.config/nimbusaudit"
+CONFIG_FILE="$CONFIG_DIR/config.json"
+
+DEFAULT_AWS_PROFILE="nimbusaudit-readonly"
+CONFIG_AWS_PROFILE=""
+CLI_AWS_PROFILE=""
+FORWARD_ARGS=()
+FORWARD_ARG_COUNT=0
 IMAGE_NAME="${NIMBUSAUDIT_IMAGE:-nimbusaudit}"
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    CONFIG_AWS_PROFILE="$(
+        sed -n \
+            's/.*"profile"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+            "$CONFIG_FILE"
+    )"
+fi
+
+
+if [[ "${1:-}" == "configure" ]]; then
+    exec docker run --rm -it \
+        --mount "type=bind,source=$CONFIG_DIR,target=/home/nimbusaudit/.config/nimbusaudit" \
+        "$IMAGE_NAME" \
+        "$@"
+fi
+
+INTERACTIVE=false
+
+while (( $# > 0 )); do
+    case "$1" in
+        --profile)
+            if (( $# < 2 )); then
+                echo "Error: --profile requires a value." >&2
+                exit 2
+            fi
+
+            CLI_AWS_PROFILE="$2"
+            shift 2
+            ;;
+
+        --profile=*)
+            CLI_AWS_PROFILE="${1#--profile=}"
+            shift
+            ;;
+
+        --output-file)
+            if (( $# < 2 )); then
+                echo "Error: --output-file requires a value." >&2
+                exit 2
+            fi
+
+            OUTPUT_FILE_VALUE="$2"
+
+            if [[ "$OUTPUT_FILE_VALUE" != /* ]]; then
+                OUTPUT_FILE_VALUE="/outputs/$OUTPUT_FILE_VALUE"
+            fi
+
+            FORWARD_ARGS+=(--output-file "$OUTPUT_FILE_VALUE")
+            ((FORWARD_ARG_COUNT += 2))
+            shift 2
+            ;;
+
+        --output-file=*)
+            OUTPUT_FILE_VALUE="${1#--output-file=}"
+
+            if [[ "$OUTPUT_FILE_VALUE" != /* ]]; then
+                OUTPUT_FILE_VALUE="/outputs/$OUTPUT_FILE_VALUE"
+            fi
+
+            FORWARD_ARGS+=("--output-file=$OUTPUT_FILE_VALUE")
+            ((FORWARD_ARG_COUNT += 1))
+            shift
+            ;;
+
+        menu)
+            INTERACTIVE=true
+            FORWARD_ARGS+=("$1")
+            ((FORWARD_ARG_COUNT += 1))
+            shift
+            ;;
+
+
+
+        *)
+            FORWARD_ARGS+=("$1")
+            ((FORWARD_ARG_COUNT += 1))
+            shift
+            ;;
+    esac
+done
+
+AWS_PROFILE_NAME="${CLI_AWS_PROFILE:-${CONFIG_AWS_PROFILE:-$DEFAULT_AWS_PROFILE}}"
+
+
+
+
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 OUTPUT_DIR="$PROJECT_ROOT/outputs"
+
 
 # Ensure required host tools are available.
 if ! command -v aws >/dev/null 2>&1; then
@@ -67,15 +162,30 @@ unset AWS_CREDENTIAL_EXPIRATION 2>/dev/null || true
 
 mkdir -p "$OUTPUT_DIR"
 
+
+DOCKER_ARGS=(--rm)
+
+if [[ "$INTERACTIVE" == true ]]; then
+    DOCKER_ARGS+=(-it)
+fi
+
+NIMBUSAUDIT_ARGS=(
+    --profile "$AWS_PROFILE_NAME"
+)
+
+if (( ${#FORWARD_ARGS[@]} > 0 )); then
+    NIMBUSAUDIT_ARGS+=("${FORWARD_ARGS[@]}")
+fi
 # Exit code 1 is meaningful to NimbusAudit, so capture rather than
 # allowing `set -e` to terminate the wrapper immediately.
-if docker run --rm \
+if docker run \
+    "${DOCKER_ARGS[@]}" \
     --mount type=bind,source="$CRED_FILE",target=/run/nimbusaudit/aws-credentials,readonly \
+    --mount type=bind,source="$CONFIG_DIR",target=/home/nimbusaudit/.config/nimbusaudit \
     --mount type=bind,source="$OUTPUT_DIR",target=/outputs \
     --env AWS_SHARED_CREDENTIALS_FILE=/run/nimbusaudit/aws-credentials \
     "$IMAGE_NAME" \
-    --profile "$AWS_PROFILE_NAME" \
-    "$@"
+    "${NIMBUSAUDIT_ARGS[@]}"
 then
     EXIT_CODE=0
 else

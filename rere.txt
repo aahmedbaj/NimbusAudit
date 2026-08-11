@@ -1,0 +1,42 @@
+                           NimbusAudit report                           
+========================================================================
+Profile: nimbusaudit-readonly
+Region: eu-central-1
+
+Checks run
+----------
+  - security-groups
+  - ec2
+  - ebs
+  - s3
+
+Resources scanned
+-----------------
+  Security groups : 5
+  EC2 instances   : 2
+  EBS volumes     : 2
+  S3 buckets      : 1
+
+Findings
+--------
+
+[HIGH] SSH exposed to the public internet
+  Rule: AWS-EC2-SG-001
+  Resource: sg-0390ce7792a3a99f0
+  Evidence: Security group 'nimbusaudit-vulnerable-sg' allows TCP port 22 from 0.0.0.0/0.
+  Remediation: Restrict SSH access to an approved admin IP, corporate VPN, bastion host, or private access mechanism.
+
+[MEDIUM] S3 bucket default encryption does not use AWS KMS
+  Rule: AWS-S3-BUCKET-003
+  Resource: nimbusaudit-bucket-1-2026
+  Evidence: S3 bucket 'nimbusaudit-bucket-1-2026' uses default encryption algorithm(s): AES256. AWS KMS encryption was not detected.
+  Remediation: Configure default server-side encryption with AWS KMS using SSE-KMS or DSSE-KMS when stronger key management, auditability, or compliance alignment is required.
+
+Findings summary
+----------------
+  Critical : 0
+  High     : 1
+  Medium   : 1
+  Low      : 0
+  Total    : 2
+
