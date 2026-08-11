@@ -8,8 +8,14 @@ on:
 
 jobs:
   pytest:
-    name: Run pytest
+    name: Pytest - Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version:
+          - "3.11"
+          - "3.14"
 
     steps:
       - name: Check out repository
@@ -18,7 +24,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Install project
         run: |
@@ -27,3 +33,28 @@ jobs:
 
       - name: Run tests
         run: pytest
+
+  docker:
+    name: Validate Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t nimbusaudit .
+
+      - name: Smoke test NimbusAudit CLI
+        run: docker run --rm nimbusaudit --help
+
+      - name: Verify non-root runtime
+        run: |
+          uid="$(docker run --rm --entrypoint id nimbusaudit -u)"
+
+          if [ "$uid" -eq 0 ]; then
+            echo "Error: NimbusAudit container is running as root."
+            exit 1
+          fi
+
+          echo "NimbusAudit container runs as UID $uid."
