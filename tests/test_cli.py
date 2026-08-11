@@ -79,7 +79,7 @@ def test_resolve_output_adds_suffix_from_configured_format() -> None:
     )
 
     assert output_format == "text"
-    assert output_file == Path("report.txt")
+    assert output_file == Path("outputs/report.txt")
 
 
 def test_resolve_output_adds_suffix_from_cli_format() -> None:
@@ -90,7 +90,7 @@ def test_resolve_output_adds_suffix_from_cli_format() -> None:
     )
 
     assert output_format == "json"
-    assert output_file == Path("report.json")
+    assert output_file == Path("outputs/report.json")
 
 
 def test_resolve_output_json_suffix_sets_json_format() -> None:
@@ -101,7 +101,7 @@ def test_resolve_output_json_suffix_sets_json_format() -> None:
     )
 
     assert output_format == "json"
-    assert output_file == Path("report.json")
+    assert output_file == Path("outputs/report.json")
 
 
 def test_resolve_output_txt_suffix_sets_text_format() -> None:
@@ -112,7 +112,7 @@ def test_resolve_output_txt_suffix_sets_text_format() -> None:
     )
 
     assert output_format == "text"
-    assert output_file == Path("report.txt")
+    assert output_file == Path("outputs/report.txt")
 
 
 def test_resolve_output_rejects_text_format_with_json_suffix() -> None:

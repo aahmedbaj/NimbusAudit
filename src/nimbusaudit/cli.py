@@ -47,7 +47,7 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="GROUPS",
         help=(
             "Comma-separated check groups to run. "
-            "Valid groups: all, security-groups, ec2, ebs. "
+            "Valid groups: all, security-groups, ec2, ebs, s3. "
             "Examples: --checks security-groups, "
             "--checks ec2,ebs, --checks all. "
             "Default: all."
@@ -385,6 +385,9 @@ def resolve_output_format_and_file(
         return output_format, None
 
     path = Path(output_file)
+    if not path.is_absolute():
+        path = Path("outputs") / path
+
     suffix = path.suffix.lower()
 
     if suffix == "":
@@ -524,7 +527,6 @@ def main():
         print(f"NimbusAudit output error: {exc}")
         return 2
 
-    menu_checks= None
     if args.command == "menu":
         try:
             menu_checks = prompt_for_check_groups_menu()
@@ -536,7 +538,7 @@ def main():
             print("No scan started.")
             return 0
 
-    args.checks = menu_checks
+        args.checks = menu_checks
 
     try:
         selected_check_groups = resolve_check_groups(

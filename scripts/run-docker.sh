@@ -47,35 +47,6 @@ while (( $# > 0 )); do
             shift
             ;;
 
-        --output-file)
-            if (( $# < 2 )); then
-                echo "Error: --output-file requires a value." >&2
-                exit 2
-            fi
-
-            OUTPUT_FILE_VALUE="$2"
-
-            if [[ "$OUTPUT_FILE_VALUE" != /* ]]; then
-                OUTPUT_FILE_VALUE="/outputs/$OUTPUT_FILE_VALUE"
-            fi
-
-            FORWARD_ARGS+=(--output-file "$OUTPUT_FILE_VALUE")
-            ((FORWARD_ARG_COUNT += 2))
-            shift 2
-            ;;
-
-        --output-file=*)
-            OUTPUT_FILE_VALUE="${1#--output-file=}"
-
-            if [[ "$OUTPUT_FILE_VALUE" != /* ]]; then
-                OUTPUT_FILE_VALUE="/outputs/$OUTPUT_FILE_VALUE"
-            fi
-
-            FORWARD_ARGS+=("--output-file=$OUTPUT_FILE_VALUE")
-            ((FORWARD_ARG_COUNT += 1))
-            shift
-            ;;
-
         menu)
             INTERACTIVE=true
             FORWARD_ARGS+=("$1")
@@ -182,7 +153,7 @@ if docker run \
     "${DOCKER_ARGS[@]}" \
     --mount type=bind,source="$CRED_FILE",target=/run/nimbusaudit/aws-credentials,readonly \
     --mount type=bind,source="$CONFIG_DIR",target=/home/nimbusaudit/.config/nimbusaudit \
-    --mount type=bind,source="$OUTPUT_DIR",target=/outputs \
+    --mount type=bind,source="$OUTPUT_DIR",target=/app/outputs \
     --env AWS_SHARED_CREDENTIALS_FILE=/run/nimbusaudit/aws-credentials \
     "$IMAGE_NAME" \
     "${NIMBUSAUDIT_ARGS[@]}"
