@@ -14,7 +14,8 @@ RUN groupadd --system nimbusaudit \
     --home-dir /home/nimbusaudit \
     nimbusaudit
 
-COPY . .
+COPY pyproject.toml .
+COPY src ./src
 
 RUN python -m pip install .
 
