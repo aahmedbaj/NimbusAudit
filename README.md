@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="assets/logonimbusaudit.png" alt="NimbusAudit Logo" width="400">
+</p>
+
+
 # NimbusAudit
 
 [![Tests](https://github.com/aahmedbaj/nimbusaudit/actions/workflows/tests.yml/badge.svg)](https://github.com/aahmedbaj/nimbusaudit/actions/workflows/tests.yml)
