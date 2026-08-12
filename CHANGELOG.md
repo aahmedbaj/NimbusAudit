@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.3.0
+
+### Added
+
+* Added Docker support for running NimbusAudit as a containerized CLI.
+* Added `scripts/run-docker.sh` for secure Docker execution.
+* Added host-side AWS credential resolution and temporary credential export for Docker scans.
+* Added support for assuming a dedicated least-privilege AWS role before running containerized scans.
+* Added persistent Docker configuration using the existing `~/.config/nimbusaudit/config.json`.
+* Added Docker support for interactive `nimbusaudit menu` and `nimbusaudit configure`.
+* Added AWS profile precedence for Docker scans: explicit CLI profile, saved NimbusAudit configuration, then `nimbusaudit-readonly`.
+* Added persistent Docker report output through a bind-mounted `outputs/` directory.
+* Added GitHub Actions validation for Docker image builds and CLI startup.
+* Added CI coverage for Python 3.11 and Python 3.14.
+* Added CI validation that the Docker container runs as a non-root user.
+
+### Changed
+
+* Relative report filenames are now written under the `outputs/` directory.
+* Docker output behavior now follows the same report path rules as local NimbusAudit execution.
+* Docker image contents were reduced by copying only the package source and `pyproject.toml`.
+* Docker build context exclusions were tightened to omit development artifacts, caches, Terraform files, tests, IDE files, and generated output.
+* Docker containers remain ephemeral while configuration and reports persist on the host.
+
+### Fixed
+
+* Fixed `--checks` handling so explicitly selected check groups run only the requested checks.
+* Fixed Docker output path handling so relative report paths persist correctly on the host.
+
+### Security
+
+* Dockerized AWS scans no longer require mounting the host `~/.aws` directory into the container.
+* Only the resolved temporary AWS credential set is mounted into the container as read-only.
+* AWS login cache, source profiles, refresh state, and other host AWS identities remain outside the container.
+* The Docker image runs NimbusAudit as a dedicated non-root user.
+
+### Notes
+
+* The recommended Docker workflow uses a dedicated least-privilege AWS role such as `NimbusAuditReadOnlyRole`.
+* The Docker image uses `python:3.11-slim` as its base image.
+* Docker images are validated in CI but are not published to a container registry as part of this release.
+
 ## 0.2.0
 
 ### Added

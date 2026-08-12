@@ -416,21 +416,19 @@ NIMBUSAUDIT_IMAGE=<image> \
 
 ### Save Docker Reports to the Host
 
-The wrapper automatically creates and bind-mounts:
+NimbusAudit writes relative report paths into its `outputs/` directory.
+
+The Docker wrapper bind-mounts the host directory:
 
 ```text
 <ProjectRoot>/outputs
 ```
 
-to:
+to NimbusAudit's runtime output directory inside the container:
 
 ```text
-/outputs
+/app/outputs
 ```
-
-inside the container.
-
-Relative `--output-file` values are automatically mapped into the mounted `/outputs` directory.
 
 For example:
 
@@ -440,13 +438,15 @@ For example:
   --output-file report.json
 ```
 
-is translated internally to:
+NimbusAudit resolves the relative filename to:
 
 ```text
-/outputs/report.json
+outputs/report.json
 ```
 
-After the container exits, the report remains on the host at:
+inside its working directory.
+
+Because `/app/outputs` is bind-mounted, the report persists on the host at:
 
 ```text
 outputs/report.json
@@ -460,26 +460,15 @@ If no extension is provided:
   --output-file report
 ```
 
-NimbusAudit writes:
+NimbusAudit adds the appropriate extension and writes:
 
 ```text
 outputs/report.txt
 ```
 
-Absolute container paths remain unchanged.
+The output directory is intentionally mounted read/write so generated reports persist after the container exits.
 
-For example:
-
-```bash
-./scripts/run-docker.sh \
-  --output-file /outputs/custom-report.txt
-```
-
-writes directly through the mounted `/outputs` directory.
-
-The AWS credential file is mounted read-only.
-
-The `/outputs` directory is intentionally mounted read/write so reports can persist on the host after the container exits.
+The AWS credential file remains mounted read-only.
 
 ### Docker Credential Boundary
 
@@ -815,7 +804,7 @@ nimbusaudit --format json --output-file report
 This writes:
 
 ```text
-report.json
+outputs/report.json
 ```
 
 For text output:
@@ -827,7 +816,7 @@ nimbusaudit --format text --output-file report
 This writes:
 
 ```text
-report.txt
+outputs/report.txt
 ```
 
 If a file extension is provided, it must match the selected format. For example, this is rejected:
@@ -1126,8 +1115,10 @@ The current development version can:
 * Resolve and export temporary AWS credentials on the host for Docker scans
 * Mount only the temporary credential file into the container as read-only
 * Keep the host AWS identity store outside the container
-* Translate relative Docker output paths into the persistent `/outputs` mount
+* Persist Docker reports through the bind-mounted NimbusAudit outputs/ directory
 * Preserve NimbusAudit exit-code semantics through the Docker wrapper
+* Validate Docker image builds and CLI startup through GitHub Actions
+* Keep the runtime image minimal through explicit source copying and Docker build-context exclusions
 
 ---
 
@@ -1135,8 +1126,6 @@ The current development version can:
 
 Planned future work:
 
-* Add Docker image build validation to GitHub Actions
-* Complete Docker hardening and release `v0.3.0`
 * Add more AWS checks, such as IAM, CloudTrail, RDS, and Lambda
 * Add Terraform static analysis for selected AWS misconfigurations
 * Improve report formatting and summaries
